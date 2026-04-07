@@ -8,6 +8,8 @@ const PDF_QUALITY_NUM: Record<PdfQualityId, number> = {
   low: 0.45,
 };
 
+const MAX_SIZE = 2048;
+
 /** 縦（portrait）固定の用紙サイズ mm（幅 < 高さ） */
 const PAPER_SIZES: Record<PaperSizeId, { width: number; height: number }> = {
   a4: { width: 210, height: 297 },
@@ -20,24 +22,6 @@ function pageDimensionsPortraitMm(paperSize: PaperSizeId): { pageWidth: number; 
   return { pageWidth: s.width, pageHeight: s.height };
 }
 
-/** Canvas 経由で JPEG に再エンコード（画質調整用。EXIF 回転は行わない） */
-const reencodePhotoAsJpeg = (dataUrl: string, quality: number): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return reject(new Error('Canvas取得失敗'));
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = () => reject(new Error('画像読み込み失敗'));
-    img.src = dataUrl;
-  });
-};
-
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -45,6 +29,45 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error('画像読み込み失敗'));
     img.src = src;
   });
+}
+
+function disposeCanvas(canvas: HTMLCanvasElement): void {
+  canvas.width = 0;
+  canvas.height = 0;
+}
+
+/**
+ * 向き補正・画質調整・最大解像度制限を1パスで行い、JPEG の data URL を返す。
+ * 処理後 Canvas は破棄する。
+ */
+async function correctImageOrientation(
+  dataUrl: string,
+  quality: number,
+): Promise<{ dataUrl: string; width: number; height: number }> {
+  const img = await loadImage(dataUrl);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas取得失敗');
+
+  let w: number;
+  let h: number;
+  if (img.naturalWidth > MAX_SIZE || img.naturalHeight > MAX_SIZE) {
+    const scale = Math.min(MAX_SIZE / img.naturalWidth, MAX_SIZE / img.naturalHeight);
+    w = Math.round(img.naturalWidth * scale);
+    h = Math.round(img.naturalHeight * scale);
+  } else {
+    w = img.naturalWidth;
+    h = img.naturalHeight;
+  }
+
+  canvas.width = w;
+  canvas.height = h;
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const out = canvas.toDataURL('image/jpeg', quality);
+  disposeCanvas(canvas);
+
+  return { dataUrl: out, width: w, height: h };
 }
 
 function blobToBase64Data(blob: Blob): Promise<string> {
@@ -64,21 +87,26 @@ export const usePdf = () => {
     photos: Photo[],
     paperSize: PaperSizeId,
     pdfQuality: PdfQualityId,
+    onProgress?: (current: number, total: number) => void,
   ): Promise<Blob> => {
     const quality = PDF_QUALITY_NUM[pdfQuality];
     let pdf: jsPDF | null = null;
     const { pageWidth, pageHeight } = pageDimensionsPortraitMm(paperSize);
+    const total = photos.length;
 
-    for (let i = 0; i < photos.length; i++) {
-      const jpegDataUrl = await reencodePhotoAsJpeg(photos[i].dataUrl, quality);
-      const img = await loadImage(jpegDataUrl);
-      const imgRatio = img.naturalWidth / img.naturalHeight;
+    for (let i = 0; i < total; i++) {
+      const { dataUrl: jpegDataUrl, width: iw, height: ih } = await correctImageOrientation(
+        photos[i].dataUrl,
+        quality,
+      );
+      const imgRatio = iw / ih;
 
       if (i === 0) {
         pdf = new jsPDF({
           orientation: 'portrait',
           unit: 'mm',
           format: [pageWidth, pageHeight],
+          compress: true,
         });
       } else {
         pdf!.addPage([pageWidth, pageHeight]);
@@ -97,6 +125,9 @@ export const usePdf = () => {
       const y = (pageHeight - h) / 2;
 
       pdf!.addImage(jpegDataUrl, 'JPEG', x, y, w, h);
+
+      await new Promise<void>((r) => setTimeout(r, 0));
+      onProgress?.(i + 1, total);
     }
 
     return pdf!.output('blob');

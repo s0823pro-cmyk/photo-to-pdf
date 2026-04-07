@@ -104,6 +104,9 @@ function fileNameToPdfOutputName(fileName: string): string {
 function App() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [pdfGenProgress, setPdfGenProgress] = useState<{ current: number; total: number } | null>(
+    null,
+  );
   const [isDone, setIsDone] = useState(false);
   /** 完了メッセージ: ネイティブで Share まで終えた場合 true */
   const [doneWithNativeShare, setDoneWithNativeShare] = useState(false);
@@ -480,13 +483,20 @@ function App() {
     if (photos.length === 0) return;
     setShowPdfNameSheet(false);
     setIsGenerating(true);
+    setPdfGenProgress(null);
     setIsDone(false);
     setDoneWithNativeShare(false);
     try {
       const safe = baseName.replace(/\.pdf$/i, '').trim();
       const stem = safe.length > 0 ? safe : formatPdfBaseName();
       const list = [...photos];
-      const blob = await generatePdf(list, effectivePaperSize, effectivePdfQuality);
+      setPdfGenProgress({ current: 0, total: list.length });
+      const blob = await generatePdf(
+        list,
+        effectivePaperSize,
+        effectivePdfQuality,
+        (current, total) => setPdfGenProgress({ current, total }),
+      );
       const usedNativeShare = await savePdf(blob, `${stem}.pdf`);
       setDoneWithNativeShare(usedNativeShare);
       setIsDone(true);
@@ -494,6 +504,7 @@ function App() {
     } catch {
       await showAlertOk('PDF生成に失敗しました。');
     } finally {
+      setPdfGenProgress(null);
       setIsGenerating(false);
     }
   };
@@ -504,22 +515,36 @@ function App() {
     setShowRenameSheet(false);
     setRenamePhotoId(null);
     setIsGenerating(true);
+    setPdfGenProgress(null);
     setIsDone(false);
     setDoneWithNativeShare(false);
     try {
       const list = [...photos];
+      setPdfGenProgress({ current: 0, total: list.length });
       let usedNativeShare = false;
 
       if (sendMode === 'batch') {
         const items: { blob: Blob; fileName: string }[] = [];
         for (let i = 0; i < list.length; i++) {
-          const blob = await generatePdf([list[i]], effectivePaperSize, effectivePdfQuality);
+          const blob = await generatePdf(
+            [list[i]],
+            effectivePaperSize,
+            effectivePdfQuality,
+            (current, _innerTotal) =>
+              setPdfGenProgress({ current: i + current, total: list.length }),
+          );
           items.push({ blob, fileName: fileNameToPdfOutputName(list[i].fileName) });
         }
         usedNativeShare = await savePdfBatch(items);
       } else {
         for (let i = 0; i < list.length; i++) {
-          const blob = await generatePdf([list[i]], effectivePaperSize, effectivePdfQuality);
+          const blob = await generatePdf(
+            [list[i]],
+            effectivePaperSize,
+            effectivePdfQuality,
+            (current, _innerTotal) =>
+              setPdfGenProgress({ current: i + current, total: list.length }),
+          );
           const u = await savePdf(blob, fileNameToPdfOutputName(list[i].fileName));
           if (u) usedNativeShare = true;
         }
@@ -531,6 +556,7 @@ function App() {
     } catch {
       await showAlertOk('PDF生成に失敗しました。');
     } finally {
+      setPdfGenProgress(null);
       setIsGenerating(false);
     }
   };
@@ -670,9 +696,19 @@ function App() {
                   className="generate-btn"
                   onClick={onCreatePdfClick}
                   disabled={isGenerating}
-                  aria-label={isGenerating ? 'PDF生成中' : `PDFを生成（${photos.length}枚）`}
+                  aria-label={
+                    isGenerating
+                      ? pdfGenProgress
+                        ? `PDF生成中 ${pdfGenProgress.current}/${pdfGenProgress.total}`
+                        : 'PDF生成中'
+                      : `PDFを生成（${photos.length}枚）`
+                  }
                 >
-                  {isGenerating ? 'PDF生成中...' : 'PDFを生成'}
+                  {isGenerating
+                    ? pdfGenProgress
+                      ? `PDF生成中... ${pdfGenProgress.current}/${pdfGenProgress.total}`
+                      : 'PDF生成中...'
+                    : 'PDFを生成'}
                 </button>
               </div>
             </div>
