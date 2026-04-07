@@ -1,14 +1,16 @@
 import { Capacitor } from '@capacitor/core';
 import { useCallback, useEffect, useRef } from 'react';
 
+/** Android 本番ユニット */
 const BANNER_ID_ANDROID = 'ca-app-pub-6731542556992059/4336048057';
 const INTERSTITIAL_ID_ANDROID = 'ca-app-pub-6731542556992059/9476694093';
+/** iOS 本番ユニット */
 const BANNER_ID_IOS = 'ca-app-pub-6731542556992059/7754819825';
 const INTERSTITIAL_ID_IOS = 'ca-app-pub-6731542556992059/1035061900';
 
-const platform = Capacitor.getPlatform();
-const BANNER_ID = platform === 'ios' ? BANNER_ID_IOS : BANNER_ID_ANDROID;
-const INTERSTITIAL_ID = platform === 'ios' ? INTERSTITIAL_ID_IOS : INTERSTITIAL_ID_ANDROID;
+const isIos = Capacitor.getPlatform() === 'ios';
+const BANNER_ID = isIos ? BANNER_ID_IOS : BANNER_ID_ANDROID;
+const INTERSTITIAL_ID = isIos ? INTERSTITIAL_ID_IOS : INTERSTITIAL_ID_ANDROID;
 
 const BANNER_TEST = 'ca-app-pub-3940256099942544/6300978111';
 const INTERSTITIAL_TEST = 'ca-app-pub-3940256099942544/1033173712';
