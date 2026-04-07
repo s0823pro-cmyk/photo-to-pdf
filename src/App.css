@@ -284,9 +284,29 @@ body {
   padding: 12px 16px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   border: 1px solid rgba(255, 149, 0, 0.18);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.limit-upgrade-hint {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 6px 20px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  color: #8e8e93;
+  text-align: center;
+  cursor: pointer;
+  line-height: 1.45;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.limit-upgrade-hint:active {
+  opacity: 0.7;
 }
 
 .limit-info {
@@ -318,24 +338,6 @@ body {
 
 .dot.filled {
   background: #1c1c1e;
-}
-
-.pro-btn {
-  background: #1c1c1e;
-  color: #fff;
-  border: none;
-  border-radius: 20px;
-  padding: 8px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  letter-spacing: -0.2px;
-}
-
-.pro-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 /* 写真グリッドのみ縦スクロール */
@@ -1105,6 +1107,34 @@ body {
   align-items: center;
   gap: 12px;
   width: 100%;
+}
+
+.settings-pro-block--hero {
+  flex-shrink: 0;
+}
+
+.settings-pro-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 0 4px;
+}
+
+.settings-pro-status__text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  margin: 0;
+}
+
+.settings-support-block {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
 }
 
 .modal-handle {

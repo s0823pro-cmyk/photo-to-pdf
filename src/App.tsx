@@ -589,20 +589,24 @@ function App() {
           </button>
         </div>
 
-        {!isPro && photos.length >= MAX_FREE_PHOTOS && (
-          <div className="limit-bar">
-            <div className="limit-info">
-              <span className="limit-label">使用枚数</span>
-              <div className="limit-dots">
-                {Array.from({ length: MAX_FREE_PHOTOS }, (_, i) => (
-                  <div key={i} className={`dot ${i < photos.length ? 'filled' : ''}`} />
-                ))}
+        {!isPro && photos.length >= 1 && (
+          <>
+            <div className="limit-bar">
+              <div className="limit-info">
+                <span className="limit-label">使用枚数</span>
+                <div className="limit-dots">
+                  {Array.from({ length: MAX_FREE_PHOTOS }, (_, i) => (
+                    <div key={i} className={`dot ${i < photos.length ? 'filled' : ''}`} />
+                  ))}
+                </div>
               </div>
             </div>
-            <button type="button" className="pro-btn" disabled={isLoading} onClick={() => setShowSettings(true)}>
-              無制限 ¥500
-            </button>
-          </div>
+            {photos.length >= MAX_FREE_PHOTOS && (
+              <button type="button" className="limit-upgrade-hint" onClick={() => setShowSettings(true)}>
+                ⚙️ 設定から無制限プランにアップグレードできます
+              </button>
+            )}
+          </>
         )}
 
         {!isEmpty && (
