@@ -1,5 +1,4 @@
 import { jsPDF } from 'jspdf';
-import * as exifr from 'exifr';
 import type { Photo, PaperSizeId, PdfQualityId } from '../types';
 import { Capacitor } from '@capacitor/core';
 
@@ -9,34 +8,19 @@ const PDF_QUALITY_NUM: Record<PdfQualityId, number> = {
   low: 0.45,
 };
 
-/** 縦向き（portrait）基準の用紙サイズ mm。landscape 時は width/height を入れ替え */
+/** 縦（portrait）固定の用紙サイズ mm（幅 < 高さ） */
 const PAPER_SIZES: Record<PaperSizeId, { width: number; height: number }> = {
   a4: { width: 210, height: 297 },
   a3: { width: 297, height: 420 },
   b5: { width: 182, height: 257 },
 };
 
-function pageDimensionsMm(paperSize: PaperSizeId, landscapePage: boolean): { pageWidth: number; pageHeight: number } {
+function pageDimensionsPortraitMm(paperSize: PaperSizeId): { pageWidth: number; pageHeight: number } {
   const s = PAPER_SIZES[paperSize];
-  if (landscapePage) {
-    return { pageWidth: s.height, pageHeight: s.width };
-  }
   return { pageWidth: s.width, pageHeight: s.height };
 }
 
-const getImageOrientation = async (dataUrl: string): Promise<number> => {
-  try {
-    const result = await exifr.parse(dataUrl, ['Orientation']);
-    return result?.Orientation ?? 1;
-  } catch {
-    return 1;
-  }
-};
-
-const correctImageOrientation = (
-  dataUrl: string,
-  quality: number,
-): Promise<{ dataUrl: string; width: number; height: number }> => {
+const correctImageOrientation = (dataUrl: string, quality: number): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -46,22 +30,20 @@ const correctImageOrientation = (
       const ctx = canvas.getContext('2d');
       if (!ctx) return reject(new Error('Canvas取得失敗'));
       ctx.drawImage(img, 0, 0);
-      resolve({
-        dataUrl: canvas.toDataURL('image/jpeg', quality),
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-      });
+      resolve(canvas.toDataURL('image/jpeg', quality));
     };
     img.onerror = () => reject(new Error('画像読み込み失敗'));
     img.src = dataUrl;
   });
 };
 
-function isLandscapePage(photo: Photo, imgRatio: number): boolean {
-  const o = photo.orientation;
-  if (o === 'portrait') return false;
-  if (o === 'landscape') return true;
-  return imgRatio > 1;
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('画像読み込み失敗'));
+    img.src = src;
+  });
 }
 
 export const usePdf = () => {
@@ -72,29 +54,16 @@ export const usePdf = () => {
   ): Promise<Blob> => {
     const quality = PDF_QUALITY_NUM[pdfQuality];
     let pdf: jsPDF | null = null;
+    const { pageWidth, pageHeight } = pageDimensionsPortraitMm(paperSize);
 
     for (let i = 0; i < photos.length; i++) {
-      const orientation = await getImageOrientation(photos[i].dataUrl);
-      const { dataUrl: correctedDataUrl, width: imgW, height: imgH } = await correctImageOrientation(
-        photos[i].dataUrl,
-        quality,
-      );
-      const isRotated = orientation === 6 || orientation === 8;
-      const imgRatio = isRotated ? imgH / imgW : imgW / imgH;
-      const landscapePage = isLandscapePage(photos[i], imgRatio);
-      const { pageWidth, pageHeight } = pageDimensionsMm(paperSize, landscapePage);
-
-      // TODO(本番前削除): 用紙・ページ寸法デバッグ
-      console.log('[generatePdf page]', {
-        index: i,
-        paperSize,
-        pageWidth,
-        pageHeight,
-        isLandscape: landscapePage,
-      });
+      const correctedDataUrl = await correctImageOrientation(photos[i].dataUrl, quality);
+      const img = await loadImage(correctedDataUrl);
+      const imgRatio = img.naturalWidth / img.naturalHeight;
 
       if (i === 0) {
         pdf = new jsPDF({
+          orientation: 'portrait',
           unit: 'mm',
           format: [pageWidth, pageHeight],
         });

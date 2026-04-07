@@ -90,22 +90,6 @@ function fileNameToPdfOutputName(fileName: string): string {
   return `${t}.pdf`;
 }
 
-function normalizePhotoOrientation(o: Photo['orientation']): 'auto' | 'portrait' | 'landscape' {
-  if (o === 'portrait') return 'portrait';
-  if (o === 'landscape') return 'landscape';
-  return 'auto';
-}
-
-/** 全写真が同じ向きのときだけそのモード。混在時は null（セグメントをハイライトしない） */
-function getBulkOrientationHighlight(photos: Photo[]): 'auto' | 'portrait' | 'landscape' | null {
-  if (photos.length === 0) return null;
-  const n0 = normalizePhotoOrientation(photos[0].orientation);
-  for (let i = 1; i < photos.length; i++) {
-    if (normalizePhotoOrientation(photos[i].orientation) !== n0) return null;
-  }
-  return n0;
-}
-
 function App() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -506,16 +490,7 @@ function App() {
     setPreviewId(null);
   };
 
-  const applyBulkOrientation = (mode: 'auto' | 'portrait' | 'landscape') => {
-    setPhotos((prev) =>
-      prev.map((p) =>
-        mode === 'auto' ? { ...p, orientation: undefined } : { ...p, orientation: mode },
-      ),
-    );
-  };
-
   const isEmpty = photos.length === 0;
-  const bulkOrientHighlight = !isEmpty ? getBulkOrientationHighlight(photos) : null;
 
   return (
     <div className="app">
@@ -527,34 +502,9 @@ function App() {
           </div>
           <div className="header-actions">
             {!isEmpty && (
-              <>
-                <div className="header-bulk-orient" role="group" aria-label="すべての写真の向き">
-                  <button
-                    type="button"
-                    className={`header-bulk-seg${bulkOrientHighlight === 'auto' ? ' header-bulk-seg--active' : ''}`}
-                    onClick={() => applyBulkOrientation('auto')}
-                  >
-                    自動
-                  </button>
-                  <button
-                    type="button"
-                    className={`header-bulk-seg${bulkOrientHighlight === 'portrait' ? ' header-bulk-seg--active' : ''}`}
-                    onClick={() => applyBulkOrientation('portrait')}
-                  >
-                    縦
-                  </button>
-                  <button
-                    type="button"
-                    className={`header-bulk-seg${bulkOrientHighlight === 'landscape' ? ' header-bulk-seg--active' : ''}`}
-                    onClick={() => applyBulkOrientation('landscape')}
-                  >
-                    横
-                  </button>
-                </div>
-                <button type="button" className="reset-btn reset-btn--header" onClick={handleReset}>
-                  リセット
-                </button>
-              </>
+              <button type="button" className="reset-btn reset-btn--header" onClick={handleReset}>
+                リセット
+              </button>
             )}
             {isPro && (
               <button
@@ -811,17 +761,7 @@ function App() {
         <PhotoPreviewModal
           dataUrl={previewPhoto.dataUrl}
           fileName={previewPhoto.fileName}
-          orientation={previewPhoto.orientation}
           onClose={() => setPreviewId(null)}
-          onOrientationChange={(mode) => {
-            setPhotos((prev) =>
-              prev.map((p) =>
-                p.id !== previewPhoto.id
-                  ? p
-                  : { ...p, orientation: mode === 'auto' ? undefined : mode },
-              ),
-            );
-          }}
         />
       )}
 
