@@ -23,7 +23,10 @@ function pageDimensionsMm(paperSize: PaperSizeId, landscapePage: boolean): { pag
   return { pageWidth: s.width, pageHeight: s.height };
 }
 
-const correctImageOrientation = (dataUrl: string, quality: number): Promise<string> => {
+const correctImageOrientation = (
+  dataUrl: string,
+  quality: number,
+): Promise<{ dataUrl: string; width: number; height: number }> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -33,21 +36,16 @@ const correctImageOrientation = (dataUrl: string, quality: number): Promise<stri
       const ctx = canvas.getContext('2d');
       if (!ctx) return reject(new Error('Canvas取得失敗'));
       ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+      resolve({
+        dataUrl: canvas.toDataURL('image/jpeg', quality),
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+      });
     };
     img.onerror = () => reject(new Error('画像読み込み失敗'));
     img.src = dataUrl;
   });
 };
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('画像読み込み失敗'));
-    img.src = src;
-  });
-}
 
 function isLandscapePage(photo: Photo, imgRatio: number): boolean {
   const o = photo.orientation;
@@ -66,9 +64,11 @@ export const usePdf = () => {
     let pdf: jsPDF | null = null;
 
     for (let i = 0; i < photos.length; i++) {
-      const correctedDataUrl = await correctImageOrientation(photos[i].dataUrl, quality);
-      const img = await loadImage(correctedDataUrl);
-      const imgRatio = img.width / img.height;
+      const { dataUrl: correctedDataUrl, width: imgW, height: imgH } = await correctImageOrientation(
+        photos[i].dataUrl,
+        quality,
+      );
+      const imgRatio = imgW / imgH;
       const landscapePage = isLandscapePage(photos[i], imgRatio);
       const { pageWidth, pageHeight } = pageDimensionsMm(paperSize, landscapePage);
 
