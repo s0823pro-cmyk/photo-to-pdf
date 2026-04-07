@@ -13,7 +13,13 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
-import { type Photo, type PaperSizeId, type PdfQualityId, MAX_FREE_PHOTOS } from './types';
+import {
+  type Photo,
+  type PaperSizeId,
+  type PdfQualityId,
+  type GridColumns,
+  MAX_FREE_PHOTOS,
+} from './types';
 import { SettingsModal } from './components/SettingsModal';
 import { PdfNameSheet } from './components/PdfNameSheet';
 import { PhotoPreviewModal } from './components/PhotoPreviewModal';
@@ -64,6 +70,16 @@ function loadPdfQuality(): PdfQualityId {
     /* ignore */
   }
   return 'high';
+}
+
+function loadGridColumns(): GridColumns {
+  try {
+    const v = localStorage.getItem('gridColumns');
+    if (v === '2' || v === '3' || v === '5') return v;
+  } catch {
+    /* ignore */
+  }
+  return '2';
 }
 
 function fileNameToPdfOutputName(fileName: string): string {
@@ -118,6 +134,7 @@ function App() {
 
   const [paperSize, setPaperSize] = useState<PaperSizeId>('a4');
   const [pdfQuality, setPdfQuality] = useState<PdfQualityId>('high');
+  const [gridColumns, setGridColumns] = useState<GridColumns>(() => loadGridColumns());
 
   const setShowSettings = (open: boolean) => {
     setShowProModal(open);
@@ -160,6 +177,20 @@ function App() {
       /* ignore */
     }
   }, [pdfQuality]);
+
+  useEffect(() => {
+    if (!isPro && gridColumns === '5') {
+      setGridColumns('2');
+    }
+  }, [isPro, gridColumns]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gridColumns', gridColumns);
+    } catch {
+      /* ignore */
+    }
+  }, [gridColumns]);
 
   const effectivePaperSize: PaperSizeId =
     !isPro && (paperSize === 'a3' || paperSize === 'b5') ? 'a4' : paperSize;
@@ -673,7 +704,11 @@ function App() {
           {isEmpty ? (
             <p className="photo-grid-hint">撮影・ライブラリ（写真）・ファイルボタンから追加してください</p>
           ) : (
-            <div className="photo-grid">
+            <div
+              className="photo-grid"
+              data-columns={gridColumns}
+              style={{ gridTemplateColumns: `repeat(${gridColumns}, 1fr)` }}
+            >
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
@@ -801,12 +836,8 @@ function App() {
           onPaperSizeChange={setPaperSize}
           pdfQuality={pdfQuality}
           onPdfQualityChange={setPdfQuality}
-          onLockedPaperOptionTap={() => {
-            document.getElementById('settings-pro-section')?.scrollIntoView({
-              behavior: 'smooth',
-              block: 'start',
-            });
-          }}
+          gridColumns={gridColumns}
+          onGridColumnsChange={setGridColumns}
         />
       )}
     </div>

@@ -1,5 +1,14 @@
-import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
+import { useEffect, useRef } from 'react';
+import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import type { PhotoPageOrientation } from '../types';
+
+const RESET_DURATION_MS = 0;
+
+function resetIfZoomedOutBelowOne(ref: ReactZoomPanPinchRef) {
+  if (ref.state.scale < 1) {
+    ref.resetTransform(RESET_DURATION_MS);
+  }
+}
 
 interface Props {
   dataUrl: string;
@@ -23,7 +32,15 @@ export function PhotoPreviewModal({
   onClose,
   onOrientationChange,
 }: Props) {
+  const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const segment = toSegment(orientation);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      transformRef.current?.resetTransform(RESET_DURATION_MS);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [dataUrl]);
 
   const pickSegment = (mode: SegmentMode) => {
     if (mode === 'auto') onOrientationChange('auto');
@@ -35,6 +52,7 @@ export function PhotoPreviewModal({
       <div className="preview-stage" role="presentation">
         <div className="preview-zoom-host" role="presentation">
           <TransformWrapper
+            ref={transformRef}
             initialScale={1}
             minScale={0.6}
             maxScale={4}
@@ -44,6 +62,8 @@ export function PhotoPreviewModal({
             wheel={{ disabled: true }}
             panning={{ disabled: true }}
             pinch={{ disabled: false }}
+            onZoomStop={(ref) => resetIfZoomedOutBelowOne(ref)}
+            onPinchStop={(ref) => resetIfZoomedOutBelowOne(ref)}
           >
             <TransformComponent
               wrapperClass="preview-transform-wrapper"
