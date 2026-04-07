@@ -489,18 +489,18 @@ function App() {
         <div className="quick-add-bar">
           <button
             type="button"
-            className="quick-add-btn"
+            className="quick-add-btn quick-add-btn--camera"
             disabled={!canAddMore || isLoading}
             onClick={() => void handleCamera()}
+            aria-label="カメラを起動"
           >
-            <span className="quick-add-btn-icon" aria-hidden>📷</span>
-            <span className="quick-add-btn-stack">
-              <span className="quick-add-btn-text">撮影</span>
+            <span className="quick-add-btn-icon quick-add-btn-icon--camera" aria-hidden>
+              📷
             </span>
           </button>
           <button
             type="button"
-            className="quick-add-btn"
+            className="quick-add-btn quick-add-btn--grow"
             disabled={!canAddMore || isLoading}
             onClick={handleLibraryPick}
           >
@@ -511,7 +511,7 @@ function App() {
           </button>
           <button
             type="button"
-            className="quick-add-btn"
+            className="quick-add-btn quick-add-btn--grow"
             disabled={!canAddMore || isLoading}
             onClick={handlePdfPick}
           >
@@ -691,7 +691,17 @@ function App() {
         <PhotoPreviewModal
           dataUrl={previewPhoto.dataUrl}
           fileName={previewPhoto.fileName}
+          orientation={previewPhoto.orientation}
           onClose={() => setPreviewId(null)}
+          onOrientationChange={(mode) => {
+            setPhotos((prev) =>
+              prev.map((p) =>
+                p.id !== previewPhoto.id
+                  ? p
+                  : { ...p, orientation: mode === 'auto' ? undefined : mode },
+              ),
+            );
+          }}
         />
       )}
 

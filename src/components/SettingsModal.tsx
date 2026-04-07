@@ -142,7 +142,7 @@ export const SettingsModal = ({
           </div>
         </div>
 
-        <p className="original-price">通常価格 ¥750</p>
+        <p className="original-price">通常価格 ¥1,200</p>
 
         <button type="button" className="modal-buy-btn" onClick={onPurchase} disabled={isLoading}>
           {isLoading ? '処理中...' : '¥500 で購入（期間限定）'}

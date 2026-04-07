@@ -1,7 +1,11 @@
+export type PhotoPageOrientation = 'portrait' | 'landscape' | 'auto';
+
 export interface Photo {
   id: string;
   dataUrl: string;
   fileName: string;
+  /** PDF のページ向き。未設定・'auto' は画像の縦横比で自動 */
+  orientation?: PhotoPageOrientation;
 }
 
 export interface AppState {

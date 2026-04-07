@@ -8,14 +8,20 @@ const PDF_QUALITY_NUM: Record<PdfQualityId, number> = {
   low: 0.45,
 };
 
-const PAPER_LAYOUT: Record<
-  PaperSizeId,
-  { width: number; height: number; orientation: 'portrait' | 'landscape' }
-> = {
-  a3: { width: 420, height: 297, orientation: 'landscape' },
-  a4: { width: 210, height: 297, orientation: 'portrait' },
-  b5: { width: 182, height: 257, orientation: 'portrait' },
+/** 縦向き基準の用紙幅・高さ（mm）。横向きページでは w/h を入れ替える */
+const PAPER_PORTRAIT_MM: Record<PaperSizeId, { w: number; h: number }> = {
+  a3: { w: 297, h: 420 },
+  a4: { w: 210, h: 297 },
+  b5: { w: 182, h: 257 },
 };
+
+function pageDimensionsMm(paperSize: PaperSizeId, landscapePage: boolean): { pageWidth: number; pageHeight: number } {
+  const { w, h } = PAPER_PORTRAIT_MM[paperSize];
+  if (landscapePage) {
+    return { pageWidth: h, pageHeight: w };
+  }
+  return { pageWidth: w, pageHeight: h };
+}
 
 const correctImageOrientation = (dataUrl: string, quality: number): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -34,38 +40,50 @@ const correctImageOrientation = (dataUrl: string, quality: number): Promise<stri
   });
 };
 
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('画像読み込み失敗'));
+    img.src = src;
+  });
+}
+
+function isLandscapePage(photo: Photo, imgRatio: number): boolean {
+  const o = photo.orientation;
+  if (o === 'portrait') return false;
+  if (o === 'landscape') return true;
+  return imgRatio > 1;
+}
+
 export const usePdf = () => {
   const generatePdf = async (
     photos: Photo[],
     paperSize: PaperSizeId,
     pdfQuality: PdfQualityId,
   ): Promise<Blob> => {
-    const layout = PAPER_LAYOUT[paperSize];
     const quality = PDF_QUALITY_NUM[pdfQuality];
-    const pdf = new jsPDF({
-      orientation: layout.orientation,
-      unit: 'mm',
-      format: [layout.width, layout.height],
-    });
-
-    const pageWidth = layout.width;
-    const pageHeight = layout.height;
+    let pdf: jsPDF | null = null;
 
     for (let i = 0; i < photos.length; i++) {
-      if (i > 0) pdf.addPage([pageWidth, pageHeight], layout.orientation);
-
       const correctedDataUrl = await correctImageOrientation(photos[i].dataUrl, quality);
-
-      const img = new Image();
-      img.src = correctedDataUrl;
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('画像読み込み失敗'));
-      });
-
+      const img = await loadImage(correctedDataUrl);
       const imgRatio = img.width / img.height;
-      const pageRatio = pageWidth / pageHeight;
+      const landscapePage = isLandscapePage(photos[i], imgRatio);
+      const orient = landscapePage ? 'landscape' : 'portrait';
+      const { pageWidth, pageHeight } = pageDimensionsMm(paperSize, landscapePage);
 
+      if (i === 0) {
+        pdf = new jsPDF({
+          orientation: orient,
+          unit: 'mm',
+          format: [pageWidth, pageHeight],
+        });
+      } else {
+        pdf!.addPage([pageWidth, pageHeight], orient);
+      }
+
+      const pageRatio = pageWidth / pageHeight;
       let w = pageWidth;
       let h = pageHeight;
       if (imgRatio > pageRatio) {
@@ -78,10 +96,10 @@ export const usePdf = () => {
       const y = (pageHeight - h) / 2;
 
       const format = correctedDataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-      pdf.addImage(correctedDataUrl, format, x, y, w, h);
+      pdf!.addImage(correctedDataUrl, format, x, y, w, h);
     }
 
-    return pdf.output('blob');
+    return pdf!.output('blob');
   };
 
   const savePdf = async (blob: Blob, fileName: string): Promise<void> => {
