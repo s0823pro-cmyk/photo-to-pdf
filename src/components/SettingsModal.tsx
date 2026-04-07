@@ -49,6 +49,7 @@ const QUALITY_OPTIONS: { id: PdfQualityId; label: string; proOnly: boolean }[] =
   { id: 'high', label: '高', proOnly: false },
   { id: 'medium', label: '中', proOnly: true },
   { id: 'low', label: '低', proOnly: true },
+  { id: 'ultra_low', label: '超低', proOnly: true },
 ];
 
 const paperDisplay: Record<PaperSizeId, string> = {
@@ -61,6 +62,7 @@ const qualityDisplay: Record<PdfQualityId, string> = {
   high: '高',
   medium: '中',
   low: '低',
+  ultra_low: '超低',
 };
 
 type OpenSection = 'display' | 'send' | 'size' | 'quality' | 'purchase' | null;

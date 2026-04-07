@@ -66,7 +66,7 @@ function loadPaperSize(): PaperSizeId {
 function loadPdfQuality(): PdfQualityId {
   try {
     const v = localStorage.getItem('pdfQuality');
-    if (v === 'high' || v === 'medium' || v === 'low') return v;
+    if (v === 'high' || v === 'medium' || v === 'low' || v === 'ultra_low') return v;
   } catch {
     /* ignore */
   }
@@ -154,7 +154,7 @@ function App() {
     const stored = loadPdfQuality();
     if (isPro) {
       setPdfQuality(stored);
-    } else if (stored === 'medium' || stored === 'low') {
+    } else if (stored === 'medium' || stored === 'low' || stored === 'ultra_low') {
       setPdfQuality('high');
     } else {
       setPdfQuality(stored);
@@ -203,7 +203,9 @@ function App() {
     !isPro && (paperSize === 'a3' || paperSize === 'b5') ? 'a4' : paperSize;
 
   const effectivePdfQuality: PdfQualityId =
-    !isPro && (pdfQuality === 'medium' || pdfQuality === 'low') ? 'high' : pdfQuality;
+    !isPro && (pdfQuality === 'medium' || pdfQuality === 'low' || pdfQuality === 'ultra_low')
+      ? 'high'
+      : pdfQuality;
 
   useEffect(() => {
     photosRef.current = photos;
