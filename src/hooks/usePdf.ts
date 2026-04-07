@@ -8,7 +8,12 @@ const PDF_QUALITY_NUM: Record<PdfQualityId, number> = {
   low: 0.45,
 };
 
-const MAX_SIZE = 2048;
+/** 長辺の上限（px）。画質が低いほど小さくしてメモリを抑える */
+const MAX_SIZE_BY_QUALITY: Record<PdfQualityId, number> = {
+  high: 1600,
+  medium: 1200,
+  low: 800,
+};
 
 /** 縦（portrait）固定の用紙サイズ mm（幅 < 高さ） */
 const PAPER_SIZES: Record<PaperSizeId, { width: number; height: number }> = {
@@ -31,43 +36,50 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function disposeCanvas(canvas: HTMLCanvasElement): void {
-  canvas.width = 0;
-  canvas.height = 0;
-}
-
 /**
- * 向き補正・画質調整・最大解像度制限を1パスで行い、JPEG の data URL を返す。
- * 処理後 Canvas は破棄する。
+ * data:URL を Blob 化 → ObjectURL で Image 読込 → Canvas でリサイズ・JPEG 化。
+ * toDataURL 後に Canvas 破棄・ObjectURL revoke・Image 参照解除してメモリを早く解放する。
  */
 async function correctImageOrientation(
   dataUrl: string,
   quality: number,
+  maxSize: number,
 ): Promise<{ dataUrl: string; width: number; height: number }> {
-  const img = await loadImage(dataUrl);
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas取得失敗');
+  const blob = await fetch(dataUrl).then((r) => r.blob());
+  const objectUrl = URL.createObjectURL(blob);
+  let img: HTMLImageElement | null = null;
 
-  let w: number;
-  let h: number;
-  if (img.naturalWidth > MAX_SIZE || img.naturalHeight > MAX_SIZE) {
-    const scale = Math.min(MAX_SIZE / img.naturalWidth, MAX_SIZE / img.naturalHeight);
-    w = Math.round(img.naturalWidth * scale);
-    h = Math.round(img.naturalHeight * scale);
-  } else {
-    w = img.naturalWidth;
-    h = img.naturalHeight;
+  try {
+    img = await loadImage(objectUrl);
+    const canvas = document.createElement('canvas');
+    let ctx: CanvasRenderingContext2D | null = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas取得失敗');
+
+    let w: number;
+    let h: number;
+    if (img.naturalWidth > maxSize || img.naturalHeight > maxSize) {
+      const scale = Math.min(maxSize / img.naturalWidth, maxSize / img.naturalHeight);
+      w = Math.round(img.naturalWidth * scale);
+      h = Math.round(img.naturalHeight * scale);
+    } else {
+      w = img.naturalWidth;
+      h = img.naturalHeight;
+    }
+
+    canvas.width = w;
+    canvas.height = h;
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const out = canvas.toDataURL('image/jpeg', quality);
+    canvas.width = 0;
+    canvas.height = 0;
+    ctx = null;
+
+    return { dataUrl: out, width: w, height: h };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+    img = null;
   }
-
-  canvas.width = w;
-  canvas.height = h;
-  ctx.drawImage(img, 0, 0, w, h);
-
-  const out = canvas.toDataURL('image/jpeg', quality);
-  disposeCanvas(canvas);
-
-  return { dataUrl: out, width: w, height: h };
 }
 
 function blobToBase64Data(blob: Blob): Promise<string> {
@@ -90,43 +102,55 @@ export const usePdf = () => {
     onProgress?: (current: number, total: number) => void,
   ): Promise<Blob> => {
     const quality = PDF_QUALITY_NUM[pdfQuality];
+    const maxSize = MAX_SIZE_BY_QUALITY[pdfQuality];
     let pdf: jsPDF | null = null;
     const { pageWidth, pageHeight } = pageDimensionsPortraitMm(paperSize);
     const total = photos.length;
 
     for (let i = 0; i < total; i++) {
-      const { dataUrl: jpegDataUrl, width: iw, height: ih } = await correctImageOrientation(
-        photos[i].dataUrl,
-        quality,
-      );
-      const imgRatio = iw / ih;
-
-      if (i === 0) {
-        pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: [pageWidth, pageHeight],
-          compress: true,
-        });
-      } else {
-        pdf!.addPage([pageWidth, pageHeight]);
+      if (i > 0 && i % 5 === 0) {
+        await new Promise<void>((r) => setTimeout(r, 200));
       }
 
-      const pageRatio = pageWidth / pageHeight;
-      let w = pageWidth;
-      let h = pageHeight;
-      if (imgRatio > pageRatio) {
-        h = pageWidth / imgRatio;
-      } else {
-        w = pageHeight * imgRatio;
+      let jpegDataUrl: string | null = null;
+      try {
+        const { dataUrl, width: iw, height: ih } = await correctImageOrientation(
+          photos[i].dataUrl,
+          quality,
+          maxSize,
+        );
+        jpegDataUrl = dataUrl;
+        const imgRatio = iw / ih;
+
+        if (i === 0) {
+          pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: [pageWidth, pageHeight],
+            compress: true,
+          });
+        } else {
+          pdf!.addPage([pageWidth, pageHeight]);
+        }
+
+        const pageRatio = pageWidth / pageHeight;
+        let w = pageWidth;
+        let h = pageHeight;
+        if (imgRatio > pageRatio) {
+          h = pageWidth / imgRatio;
+        } else {
+          w = pageHeight * imgRatio;
+        }
+
+        const x = (pageWidth - w) / 2;
+        const y = (pageHeight - h) / 2;
+
+        pdf!.addImage(jpegDataUrl, 'JPEG', x, y, w, h);
+      } finally {
+        jpegDataUrl = null;
       }
 
-      const x = (pageWidth - w) / 2;
-      const y = (pageHeight - h) / 2;
-
-      pdf!.addImage(jpegDataUrl, 'JPEG', x, y, w, h);
-
-      await new Promise<void>((r) => setTimeout(r, 0));
+      await new Promise<void>((r) => setTimeout(r, 32));
       onProgress?.(i + 1, total);
     }
 
