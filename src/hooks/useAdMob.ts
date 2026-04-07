@@ -18,8 +18,6 @@ const IS_DEV = true;
 const BANNER_AD_ID = IS_DEV ? BANNER_TEST : BANNER_ID;
 const INTERSTITIAL_AD_ID = IS_DEV ? INTERSTITIAL_TEST : INTERSTITIAL_ID;
 
-const AD_TESTING_DEVICE_ID = 'f74592a739f621223f003a81bc48e76e';
-
 export const useAdMob = (isPro: boolean) => {
   const interstitialReady = useRef(false);
 
@@ -66,12 +64,12 @@ export const useAdMob = (isPro: boolean) => {
 
         console.log('[AdMob] initialize 開始', { IS_DEV });
         await AdMob.initialize({
-          testingDevices: [AD_TESTING_DEVICE_ID],
+          testingDevices: ['f74592a739f621223f003a81bc48e76e'],
           initializeForTesting: true,
         });
         console.log('[AdMob] initialize 完了', {
           initializeForTesting: true,
-          testingDevices: [AD_TESTING_DEVICE_ID],
+          testingDevices: ['f74592a739f621223f003a81bc48e76e'],
         });
 
         await AdMob.showBanner({
