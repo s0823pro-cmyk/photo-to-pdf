@@ -13,16 +13,17 @@ interface Props {
   onLockedPaperOptionTap: () => void;
 }
 
+// TEMP(動作確認用): 用紙 A3/B5 の Pro ロック解除 — 本番前に proOnly を戻すこと
 const PAPER_OPTIONS: { id: PaperSizeId; label: string; sub: string; proOnly: boolean }[] = [
-  { id: 'a3', label: 'A3', sub: '420 × 297mm', proOnly: true },
+  { id: 'a3', label: 'A3', sub: '420 × 297mm', proOnly: false },
   { id: 'a4', label: 'A4', sub: '210 × 297mm', proOnly: false },
-  { id: 'b5', label: 'B5', sub: '182 × 257mm', proOnly: true },
+  { id: 'b5', label: 'B5', sub: '182 × 257mm', proOnly: false },
 ];
 
-const QUALITY_OPTIONS: { id: PdfQualityId; label: string }[] = [
-  { id: 'high', label: '高' },
-  { id: 'medium', label: '中' },
-  { id: 'low', label: '低' },
+const QUALITY_OPTIONS: { id: PdfQualityId; label: string; proOnly: boolean }[] = [
+  { id: 'high', label: '高', proOnly: false },
+  { id: 'medium', label: '中', proOnly: true },
+  { id: 'low', label: '低', proOnly: true },
 ];
 
 export const SettingsModal = ({
@@ -88,16 +89,24 @@ export const SettingsModal = ({
         <div className="settings-label">PDF画質</div>
         <div className="settings-choice-row">
           {QUALITY_OPTIONS.map((opt) => {
+            const locked = opt.proOnly && !isPro;
             const active = pdfQuality === opt.id;
             return (
               <button
                 key={opt.id}
                 type="button"
-                className={`settings-row-btn settings-row-btn--compact${active ? ' settings-row-btn--active' : ''}`}
-                onClick={() => onPdfQualityChange(opt.id)}
+                className={`settings-row-btn settings-row-btn--compact${active ? ' settings-row-btn--active' : ''}${locked ? ' settings-row-btn--locked' : ''}`}
+                onClick={() => {
+                  if (locked) {
+                    onLockedPaperOptionTap();
+                    return;
+                  }
+                  onPdfQualityChange(opt.id);
+                }}
               >
                 {active && <span className="settings-choice-check">✓ </span>}
                 {opt.label}
+                {locked ? ' 🔒' : ''}
               </button>
             );
           })}

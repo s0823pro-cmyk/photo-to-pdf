@@ -24,6 +24,7 @@ import { usePurchase } from './hooks/usePurchase';
 import { usePdf } from './hooks/usePdf';
 import { CAMERA_PROMPT_LABELS, webPathToDataUrl } from './lib/cameraHelpers';
 import { truncateFileName } from './lib/formatFilename';
+import { showAlertOk } from './lib/appAlert';
 import './App.css';
 
 function formatPdfBaseName(d = new Date()): string {
@@ -98,16 +99,25 @@ function App() {
   const { showInterstitial } = useAdMob(isPro);
 
   const [paperSize, setPaperSize] = useState<PaperSizeId>('a4');
-  const [pdfQuality, setPdfQuality] = useState<PdfQualityId>(loadPdfQuality);
+  const [pdfQuality, setPdfQuality] = useState<PdfQualityId>('high');
+
+  const setShowSettings = (open: boolean) => {
+    setShowProModal(open);
+  };
+
+  // TEMP(動作確認用): 無料でも LS の A3/B5 を維持 — 本番前に isPro 分岐を復帰すること
+  useEffect(() => {
+    setPaperSize(loadPaperSize());
+  }, [isPro]);
 
   useEffect(() => {
-    const stored = loadPaperSize();
+    const stored = loadPdfQuality();
     if (isPro) {
-      setPaperSize(stored);
-    } else if (stored === 'a3' || stored === 'b5') {
-      setPaperSize('a4');
+      setPdfQuality(stored);
+    } else if (stored === 'medium' || stored === 'low') {
+      setPdfQuality('high');
     } else {
-      setPaperSize(stored);
+      setPdfQuality(stored);
     }
   }, [isPro]);
 
@@ -127,8 +137,11 @@ function App() {
     }
   }, [pdfQuality]);
 
-  const effectivePaperSize: PaperSizeId =
-    !isPro && (paperSize === 'a3' || paperSize === 'b5') ? 'a4' : paperSize;
+  // TEMP(動作確認用): 無料でも選択用紙をそのまま PDF に反映 — 本番前に isPro ガードを復帰すること
+  const effectivePaperSize: PaperSizeId = paperSize;
+
+  const effectivePdfQuality: PdfQualityId =
+    !isPro && (pdfQuality === 'medium' || pdfQuality === 'low') ? 'high' : pdfQuality;
 
   useEffect(() => {
     photosRef.current = photos;
@@ -391,12 +404,12 @@ function App() {
       const safe = baseName.replace(/\.pdf$/i, '').trim();
       const stem = safe.length > 0 ? safe : formatPdfBaseName();
       const list = [...photos];
-      const blob = await generatePdf(list, effectivePaperSize, pdfQuality);
+      const blob = await generatePdf(list, effectivePaperSize, effectivePdfQuality);
       await savePdf(blob, `${stem}.pdf`);
       setIsDone(true);
       await showInterstitial();
     } catch {
-      alert('PDF生成に失敗しました。');
+      await showAlertOk('PDF生成に失敗しました。');
     } finally {
       setIsGenerating(false);
     }
@@ -412,13 +425,13 @@ function App() {
     try {
       const list = [...photos];
       for (let i = 0; i < list.length; i++) {
-        const blob = await generatePdf([list[i]], effectivePaperSize, pdfQuality);
+        const blob = await generatePdf([list[i]], effectivePaperSize, effectivePdfQuality);
         await savePdf(blob, fileNameToPdfOutputName(list[i].fileName));
       }
       setIsDone(true);
       await showInterstitial();
     } catch {
-      alert('PDF生成に失敗しました。');
+      await showAlertOk('PDF生成に失敗しました。');
     } finally {
       setIsGenerating(false);
     }
@@ -481,7 +494,9 @@ function App() {
             onClick={() => void handleCamera()}
           >
             <span className="quick-add-btn-icon" aria-hidden>📷</span>
-            撮影
+            <span className="quick-add-btn-stack">
+              <span className="quick-add-btn-text">撮影</span>
+            </span>
           </button>
           <button
             type="button"
@@ -490,7 +505,9 @@ function App() {
             onClick={handleLibraryPick}
           >
             <span className="quick-add-btn-icon" aria-hidden>🗂️</span>
-            ライブラリ
+            <span className="quick-add-btn-stack">
+              <span className="quick-add-btn-text">ライブラリ</span>
+            </span>
           </button>
           <button
             type="button"
@@ -498,8 +515,11 @@ function App() {
             disabled={!canAddMore || isLoading}
             onClick={handlePdfPick}
           >
-            <span className="quick-add-btn-icon" aria-hidden>📄</span>
-            PDF
+            <span className="quick-add-btn-icon" aria-hidden>📁</span>
+            <span className="quick-add-btn-stack">
+              <span className="quick-add-btn-text">ファイル</span>
+              <span className="quick-add-sublabel">PDF・画像</span>
+            </span>
           </button>
         </div>
 
@@ -548,9 +568,25 @@ function App() {
       </div>
 
       <div className="photo-grid-scroll">
+        {isPro && photos.length >= 10 && (
+          <div className="pro-heavy-banner" role="status">
+            <p className="pro-heavy-banner__text">
+              ⚠️ 枚数が多いと処理に時間がかかる場合があります。
+              動作が重い場合は
+              <button
+                type="button"
+                className="pro-heavy-banner__link"
+                onClick={() => setShowSettings(true)}
+              >
+                設定
+              </button>
+              の画質を「低」にお試しください。
+            </p>
+          </div>
+        )}
         <div className="photo-grid-wrap">
           {isEmpty ? (
-            <p className="photo-grid-hint">撮影・ライブラリ（写真）・PDFボタンから追加してください</p>
+            <p className="photo-grid-hint">撮影・ライブラリ（写真）・ファイルボタンから追加してください</p>
           ) : (
             <div className="photo-grid">
               <DndContext

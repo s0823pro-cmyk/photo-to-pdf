@@ -127,22 +127,55 @@ body {
 
 .quick-add-btn {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   min-height: 48px;
-  padding: 12px 8px;
+  padding: 10px 6px;
   border-radius: var(--radius-md);
   border: 1px solid var(--separator);
   background: #fff;
-  font-size: 14px;
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
   font: inherit;
   -webkit-tap-highlight-color: transparent;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.quick-add-btn-stack {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.quick-add-btn-text {
+  font-size: clamp(11px, 3vw, 14px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.quick-add-sublabel {
+  font-size: clamp(9px, 2.5vw, 11px);
+  font-weight: 600;
+  color: var(--label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: center;
+  line-height: 1.2;
 }
 
 .quick-add-btn:disabled {
@@ -157,6 +190,41 @@ body {
 .quick-add-btn-icon {
   font-size: 18px;
   line-height: 1;
+  flex-shrink: 0;
+}
+
+.pro-heavy-banner {
+  background: #fff8ec;
+  border: 1px solid #ffe0a0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin: 0 var(--space-page) 8px;
+}
+
+.pro-heavy-banner__text {
+  margin: 0;
+  font-size: 12px;
+  color: #8a6000;
+  line-height: 1.5;
+}
+
+.pro-heavy-banner__link {
+  display: inline;
+  margin: 0 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  color: #6b4800;
+  text-decoration: underline;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pro-heavy-banner__link:active {
+  opacity: 0.75;
 }
 
 /* 制限バー */
