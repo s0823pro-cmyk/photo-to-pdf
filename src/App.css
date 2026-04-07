@@ -1258,6 +1258,38 @@ body {
   margin: 0;
 }
 
+.settings-pro-benefits {
+  margin: 0;
+}
+
+.settings-pro-benefit-photo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-pro-feature-photo-note {
+  font-size: 10px;
+  color: #aeaeb2;
+  margin: 0;
+  padding-left: 26px;
+  line-height: 1.35;
+}
+
+.settings-pro-guideline {
+  font-size: 11px;
+  color: #aeaeb2;
+  margin: 4px 0 0;
+  line-height: 1.45;
+}
+
+.settings-pro-disclaimer {
+  font-size: 10px;
+  color: #c7c7cc;
+  margin: 0;
+  line-height: 1.45;
+}
+
 .settings-purchase-free__price {
   margin: 0;
 }

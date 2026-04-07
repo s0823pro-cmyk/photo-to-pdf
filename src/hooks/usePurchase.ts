@@ -34,7 +34,7 @@ export const usePurchase = () => {
       if (purchased) {
         localStorage.setItem('isPro', 'true');
         setIsPro(true);
-        alert('購入完了！無制限でご利用いただけます。');
+        alert('購入完了！Proでご利用いただけます。');
       }
     } catch (e: unknown) {
       if (isErrWithCode(e) && e.code === 'PURCHASE_CANCELLED') {

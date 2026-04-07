@@ -664,7 +664,7 @@ function App() {
             </div>
             {photos.length >= MAX_FREE_PHOTOS && (
               <button type="button" className="limit-upgrade-hint" onClick={() => setShowSettings(true)}>
-                ⚙️ 設定から無制限プランにアップグレードできます
+                ⚙️ 設定からProプランにアップグレードできます
               </button>
             )}
           </>

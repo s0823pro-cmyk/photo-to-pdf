@@ -311,10 +311,35 @@ export const SettingsModal = ({
               {openSection === 'purchase' && (
                 <div className="settings-cell-body">
                   {isPro ? (
-                    <p className="settings-purchase-pro-msg">✓ 無制限プランをご利用中です</p>
+                    <p className="settings-purchase-pro-msg">✓ Proプランをご利用中です</p>
                   ) : (
                     <div className="settings-purchase-free">
-                      <p className="settings-purchase-free__title">無制限プラン</p>
+                      <p className="settings-purchase-free__title">Proプラン</p>
+                      <div className="modal-features settings-pro-benefits">
+                        <div className="feature-row">
+                          <span className="feature-check" aria-hidden>
+                            ✓
+                          </span>
+                          <span>広告を非表示</span>
+                        </div>
+                        <div className="settings-pro-benefit-photo">
+                          <div className="feature-row">
+                            <span className="feature-check" aria-hidden>
+                              ✓
+                            </span>
+                            <span>写真枚数 制限解除</span>
+                          </div>
+                          <p className="settings-pro-feature-photo-note">（3枚制限を解除）</p>
+                        </div>
+                        <div className="feature-row">
+                          <span className="feature-check" aria-hidden>
+                            ✓
+                          </span>
+                          <span>A3・B5 用紙・画質オプション・5列表示</span>
+                        </div>
+                        <p className="settings-pro-guideline">📱 目安: 超低画質で約35枚（iPhone 17 Pro）</p>
+                        <p className="settings-pro-disclaimer">※端末性能・画質設定により異なります</p>
+                      </div>
                       <p className="original-price settings-purchase-free__price">通常価格 ¥1,200</p>
                       <div className="limited-time-banner">
                         <span className="limited-time-icon">⏰</span>
