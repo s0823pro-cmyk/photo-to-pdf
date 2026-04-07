@@ -1,21 +1,39 @@
 import { useEffect, useState, useRef, type ChangeEvent } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { type Photo, MAX_FREE_PHOTOS } from './types';
-import { ProModal } from './components/ProModal';
+import { SettingsModal } from './components/SettingsModal';
+import { PdfNameSheet } from './components/PdfNameSheet';
+import { PhotoPreviewModal } from './components/PhotoPreviewModal';
 import { useAdMob } from './hooks/useAdMob';
 import { usePurchase } from './hooks/usePurchase';
 import { usePdf } from './hooks/usePdf';
+import { CAMERA_PROMPT_LABELS, webPathToDataUrl } from './lib/cameraHelpers';
 import './App.css';
+
+function formatPdfBaseName(d = new Date()): string {
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return `写真PDF_${y}${mo}${day}_${h}${m}`;
+}
 
 function App() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDone, setIsDone] = useState(false);
   const [showProModal, setShowProModal] = useState(false);
+  const [showPdfNameSheet, setShowPdfNameSheet] = useState(false);
+  const [pdfNameDefault, setPdfNameDefault] = useState('');
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { isPro, isLoading, purchase, restore, resetPurchase } = usePurchase();
   const { generatePdf, savePdf } = usePdf();
   const { showInterstitial } = useAdMob(isPro);
+
+  const previewPhoto = previewId ? photos.find((p) => p.id === previewId) : undefined;
 
   useEffect(() => {
     if (isPro) setShowProModal(false);
@@ -60,6 +78,7 @@ function App() {
         allowEditing: false,
         resultType: CameraResultType.DataUrl,
         source: CameraSource.Camera,
+        ...CAMERA_PROMPT_LABELS,
       });
       const dataUrl = image.dataUrl;
       if (dataUrl) {
@@ -77,9 +96,47 @@ function App() {
     }
   };
 
+  const handleLibraryPick = async () => {
+    if (!canAddMore) return;
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const { Camera } = await import('@capacitor/camera');
+        const remaining = isPro ? Infinity : MAX_FREE_PHOTOS - photos.length;
+        if (remaining <= 0) return;
+        const { photos: picked } = await Camera.pickImages({
+          quality: 90,
+          limit: isPro ? 0 : remaining,
+          correctOrientation: true,
+        });
+        const newItems: Photo[] = [];
+        let i = 0;
+        for (const p of picked) {
+          const dataUrl = await webPathToDataUrl(p.webPath);
+          newItems.push({
+            id: crypto.randomUUID(),
+            dataUrl,
+            fileName: `写真_${Date.now()}_${i++}.jpg`,
+          });
+        }
+        setPhotos((prev) => {
+          if (!isPro) {
+            const space = MAX_FREE_PHOTOS - prev.length;
+            return [...prev, ...newItems.slice(0, space)];
+          }
+          return [...prev, ...newItems];
+        });
+      } catch {
+        fileInputRef.current?.click();
+      }
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
   const removePhoto = (id: string) => {
     setPhotos((prev) => prev.filter((p) => p.id !== id));
     setIsDone(false);
+    setPreviewId((cur) => (cur === id ? null : cur));
   };
 
   const movePhoto = (index: number, dir: 'up' | 'down') => {
@@ -90,14 +147,21 @@ function App() {
     setPhotos(next);
   };
 
-  const handleGenerate = async () => {
+  const openPdfNameSheet = () => {
     if (photos.length === 0) return;
+    setPdfNameDefault(formatPdfBaseName());
+    setShowPdfNameSheet(true);
+  };
+
+  const runPdfGeneration = async (baseName: string) => {
+    if (photos.length === 0) return;
+    setShowPdfNameSheet(false);
     setIsGenerating(true);
     setIsDone(false);
     try {
       const blob = await generatePdf(photos);
-      const now = new Date();
-      const fileName = `写真PDF_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.pdf`;
+      const safe = baseName.replace(/\.pdf$/i, '').trim();
+      const fileName = `${safe.length > 0 ? safe : formatPdfBaseName()}.pdf`;
       await savePdf(blob, fileName);
       setIsDone(true);
       await showInterstitial();
@@ -111,6 +175,7 @@ function App() {
   const handleReset = () => {
     setPhotos([]);
     setIsDone(false);
+    setPreviewId(null);
   };
 
   const isEmpty = photos.length === 0;
@@ -174,7 +239,7 @@ function App() {
               <span className="empty-btn-icon">📷</span>
               撮影する
             </button>
-            <button type="button" className="empty-btn" onClick={() => fileInputRef.current?.click()}>
+            <button type="button" className="empty-btn" onClick={() => void handleLibraryPick()}>
               <span className="empty-btn-icon">🗂️</span>
               ライブラリ
             </button>
@@ -185,15 +250,24 @@ function App() {
           <div className="photo-grid">
             {photos.map((photo, i) => (
               <div key={photo.id} className="photo-card">
-                <img src={photo.dataUrl} alt={photo.fileName} />
-                <div className="photo-overlay">
-                  <button type="button" className="overlay-btn" onClick={() => removePhoto(photo.id)}>✕</button>
+                <div className="photo-thumb-wrap">
+                  <button
+                    type="button"
+                    className="photo-thumb-btn"
+                    onClick={() => setPreviewId(photo.id)}
+                    aria-label={`${photo.fileName}を拡大表示`}
+                  >
+                    <img src={photo.dataUrl} alt="" />
+                  </button>
+                  <div className="photo-overlay">
+                    <button type="button" className="overlay-btn" onClick={() => removePhoto(photo.id)} aria-label="削除">✕</button>
+                  </div>
                 </div>
                 <div className="photo-footer">
                   <div className="photo-order">
-                    <button type="button" className="order-btn" onClick={() => movePhoto(i, 'up')} disabled={i === 0}>↑</button>
+                    <button type="button" className="order-btn" onClick={() => movePhoto(i, 'up')} disabled={i === 0} aria-label="上へ">↑</button>
                     <span className="order-num">{i + 1}</span>
-                    <button type="button" className="order-btn" onClick={() => movePhoto(i, 'down')} disabled={i === photos.length - 1}>↓</button>
+                    <button type="button" className="order-btn" onClick={() => movePhoto(i, 'down')} disabled={i === photos.length - 1} aria-label="下へ">↓</button>
                   </div>
                 </div>
               </div>
@@ -205,11 +279,11 @@ function App() {
                   className="add-card"
                   role="button"
                   tabIndex={0}
-                  onClick={handleCamera}
+                  onClick={() => void handleCamera()}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      handleCamera();
+                      void handleCamera();
                     }
                   }}
                 >
@@ -221,11 +295,11 @@ function App() {
                   className="add-card"
                   role="button"
                   tabIndex={0}
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => void handleLibraryPick()}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      fileInputRef.current?.click();
+                      void handleLibraryPick();
                     }
                   }}
                 >
@@ -256,7 +330,7 @@ function App() {
           </div>
 
           <div className="actions">
-            <button type="button" className="generate-btn" onClick={handleGenerate} disabled={isGenerating}>
+            <button type="button" className="generate-btn" onClick={openPdfNameSheet} disabled={isGenerating}>
               {isGenerating ? 'PDF生成中...' : `PDFを作成 ${photos.length}枚 →`}
             </button>
             <div className="sub-actions">
@@ -270,8 +344,24 @@ function App() {
       <input ref={fileInputRef} type="file" accept="image/*" multiple className="file-input-hidden" onChange={handleFileChange} />
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFileChange} />
 
+      {showPdfNameSheet && (
+        <PdfNameSheet
+          defaultBaseName={pdfNameDefault}
+          onCancel={() => setShowPdfNameSheet(false)}
+          onConfirm={(name) => void runPdfGeneration(name)}
+        />
+      )}
+
+      {previewPhoto && (
+        <PhotoPreviewModal
+          dataUrl={previewPhoto.dataUrl}
+          fileName={previewPhoto.fileName}
+          onClose={() => setPreviewId(null)}
+        />
+      )}
+
       {showProModal && (
-        <ProModal
+        <SettingsModal
           onPurchase={handlePurchase}
           onRestore={handleRestore}
           onClose={() => setShowProModal(false)}

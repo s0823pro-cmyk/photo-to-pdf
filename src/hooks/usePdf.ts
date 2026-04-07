@@ -2,6 +2,23 @@ import { jsPDF } from 'jspdf';
 import type { Photo } from '../types';
 import { Capacitor } from '@capacitor/core';
 
+const correctImageOrientation = (dataUrl: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject(new Error('Canvas取得失敗'));
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = () => reject(new Error('画像読み込み失敗'));
+    img.src = dataUrl;
+  });
+};
+
 export const usePdf = () => {
   const generatePdf = async (photos: Photo[]): Promise<Blob> => {
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -11,11 +28,13 @@ export const usePdf = () => {
     for (let i = 0; i < photos.length; i++) {
       if (i > 0) pdf.addPage();
 
+      const correctedDataUrl = await correctImageOrientation(photos[i].dataUrl);
+
       const img = new Image();
-      img.src = photos[i].dataUrl;
+      img.src = correctedDataUrl;
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
-        img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+        img.onerror = () => reject(new Error('画像読み込み失敗'));
       });
 
       const imgRatio = img.width / img.height;
@@ -32,8 +51,8 @@ export const usePdf = () => {
       const x = (pageWidth - w) / 2;
       const y = (pageHeight - h) / 2;
 
-      const format = photos[i].dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-      pdf.addImage(photos[i].dataUrl, format, x, y, w, h);
+      const format = correctedDataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      pdf.addImage(correctedDataUrl, format, x, y, w, h);
     }
 
     return pdf.output('blob');
@@ -62,7 +81,6 @@ export const usePdf = () => {
 
       await Share.share({
         title: fileName,
-        text: 'PDFを共有',
         url: result.uri,
         dialogTitle: '共有',
       });
