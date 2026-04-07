@@ -1,8 +1,23 @@
 import { jsPDF } from 'jspdf';
-import type { Photo } from '../types';
+import type { Photo, PaperSizeId, PdfQualityId } from '../types';
 import { Capacitor } from '@capacitor/core';
 
-const correctImageOrientation = (dataUrl: string): Promise<string> => {
+const PDF_QUALITY_NUM: Record<PdfQualityId, number> = {
+  high: 0.92,
+  medium: 0.7,
+  low: 0.45,
+};
+
+const PAPER_LAYOUT: Record<
+  PaperSizeId,
+  { width: number; height: number; orientation: 'portrait' | 'landscape' }
+> = {
+  a3: { width: 420, height: 297, orientation: 'landscape' },
+  a4: { width: 210, height: 297, orientation: 'portrait' },
+  b5: { width: 182, height: 257, orientation: 'portrait' },
+};
+
+const correctImageOrientation = (dataUrl: string, quality: number): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -12,7 +27,7 @@ const correctImageOrientation = (dataUrl: string): Promise<string> => {
       const ctx = canvas.getContext('2d');
       if (!ctx) return reject(new Error('Canvas取得失敗'));
       ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/jpeg', 0.92));
+      resolve(canvas.toDataURL('image/jpeg', quality));
     };
     img.onerror = () => reject(new Error('画像読み込み失敗'));
     img.src = dataUrl;
@@ -20,15 +35,26 @@ const correctImageOrientation = (dataUrl: string): Promise<string> => {
 };
 
 export const usePdf = () => {
-  const generatePdf = async (photos: Photo[]): Promise<Blob> => {
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageWidth = 210;
-    const pageHeight = 297;
+  const generatePdf = async (
+    photos: Photo[],
+    paperSize: PaperSizeId,
+    pdfQuality: PdfQualityId,
+  ): Promise<Blob> => {
+    const layout = PAPER_LAYOUT[paperSize];
+    const quality = PDF_QUALITY_NUM[pdfQuality];
+    const pdf = new jsPDF({
+      orientation: layout.orientation,
+      unit: 'mm',
+      format: [layout.width, layout.height],
+    });
+
+    const pageWidth = layout.width;
+    const pageHeight = layout.height;
 
     for (let i = 0; i < photos.length; i++) {
-      if (i > 0) pdf.addPage();
+      if (i > 0) pdf.addPage([pageWidth, pageHeight], layout.orientation);
 
-      const correctedDataUrl = await correctImageOrientation(photos[i].dataUrl);
+      const correctedDataUrl = await correctImageOrientation(photos[i].dataUrl, quality);
 
       const img = new Image();
       img.src = correctedDataUrl;

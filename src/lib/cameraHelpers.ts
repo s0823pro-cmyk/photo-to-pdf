@@ -1,8 +1,8 @@
-/** getPhoto / pickImages 用（プラットフォームの表示に反映） */
+/** getPhoto のプロンプト用（Android: 先頭が Photo=アルバム、2番目が Picture=カメラ） */
 export const CAMERA_PROMPT_LABELS = {
   promptLabelHeader: '写真を選択',
-  promptLabelPhoto: 'カメラで撮影',
-  promptLabelPicture: 'ライブラリから選択',
+  promptLabelPhoto: 'ライブラリから選択',
+  promptLabelPicture: 'カメラで撮影',
   promptLabelCancel: 'キャンセル',
 } as const;
 

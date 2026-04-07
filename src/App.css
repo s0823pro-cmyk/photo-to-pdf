@@ -13,7 +13,7 @@
   --radius-xl: 22px;
   --space-page: 20px;
   --tap-min: 44px;
-  --bg-grouped: #f2f2f7;
+  --bg-grouped: #f0f0f5;
   --separator: rgba(60, 60, 67, 0.12);
   --label: #8e8e93;
   --text: #1c1c1e;
@@ -42,6 +42,7 @@ body {
   flex-direction: column;
   overflow: hidden;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: #f0f0f5;
 }
 
 /* ヘッダー〜PDFツールバー（固定、グリッドのみスクロール） */
@@ -50,7 +51,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 15;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(240, 240, 245, 0.96);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid var(--separator);
@@ -117,7 +118,7 @@ body {
 /* 撮影・ライブラリ（ヘッダー直下・常時） */
 .quick-add-bar {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   padding: 0 var(--space-page) 12px;
   margin-top: 0;
   margin-bottom: 0;
@@ -129,13 +130,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   min-height: 48px;
-  padding: 12px 14px;
+  padding: 12px 8px;
   border-radius: var(--radius-md);
   border: 1px solid var(--separator);
   background: #fff;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
@@ -396,7 +397,7 @@ body {
   flex-direction: column;
   gap: 10px;
   border-top: 1px solid var(--separator);
-  background: rgba(255, 255, 255, 0.96);
+  background: transparent;
 }
 
 .actions-main {
@@ -862,6 +863,107 @@ body {
 
 .settings-row-btn.danger {
   color: #ff3b30;
+}
+
+.settings-row-btn--active {
+  background: #1c1c1e !important;
+  color: #fff !important;
+}
+
+.settings-row-btn--locked {
+  opacity: 0.4;
+}
+
+.settings-row-btn--locked.settings-row-btn--active {
+  opacity: 1;
+}
+
+.settings-row-btn--compact {
+  text-align: center;
+  padding: 12px 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-choice-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.settings-choice-col .settings-row-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.settings-choice-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.settings-choice-row .settings-row-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-choice-row-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-choice-check {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.settings-choice-label {
+  font-weight: 600;
+}
+
+.settings-choice-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: #8e8e93;
+}
+
+.settings-row-btn--active .settings-choice-sub {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.modal--settings-scroll {
+  max-height: min(92dvh, 720px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  align-items: stretch;
+}
+
+.settings-modal-main-title {
+  margin-bottom: 4px;
+}
+
+.modal-title--subsection {
+  font-size: 20px;
+  margin: 0;
+}
+
+.settings-modal-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--separator);
+  margin: 8px 0 4px;
+}
+
+.settings-pro-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
 }
 
 .modal-handle {

@@ -1,4 +1,6 @@
-import { useEffect, useState, useRef, type ChangeEvent } from 'react';
+import { useEffect, useState, useRef, useCallback, type ChangeEvent } from 'react';
+import { Capacitor } from '@capacitor/core';
+import type { GalleryImageOptions } from '@capacitor/camera';
 import {
   DndContext,
   DragOverlay,
@@ -11,7 +13,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
-import { type Photo, MAX_FREE_PHOTOS } from './types';
+import { type Photo, type PaperSizeId, type PdfQualityId, MAX_FREE_PHOTOS } from './types';
 import { SettingsModal } from './components/SettingsModal';
 import { PdfNameSheet } from './components/PdfNameSheet';
 import { PhotoPreviewModal } from './components/PhotoPreviewModal';
@@ -20,7 +22,7 @@ import { RenamePhotoSheet } from './components/RenamePhotoSheet';
 import { useAdMob } from './hooks/useAdMob';
 import { usePurchase } from './hooks/usePurchase';
 import { usePdf } from './hooks/usePdf';
-import { CAMERA_PROMPT_LABELS } from './lib/cameraHelpers';
+import { CAMERA_PROMPT_LABELS, webPathToDataUrl } from './lib/cameraHelpers';
 import { truncateFileName } from './lib/formatFilename';
 import './App.css';
 
@@ -42,6 +44,35 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+/** Photo.fileName を PDF 保存名に（拡張子のみ .pdf へ、なければ末尾に .pdf） */
+function loadPaperSize(): PaperSizeId {
+  try {
+    const v = localStorage.getItem('paperSize');
+    if (v === 'a3' || v === 'a4' || v === 'b5') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'a4';
+}
+
+function loadPdfQuality(): PdfQualityId {
+  try {
+    const v = localStorage.getItem('pdfQuality');
+    if (v === 'high' || v === 'medium' || v === 'low') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'high';
+}
+
+function fileNameToPdfOutputName(fileName: string): string {
+  const t = fileName.trim() || 'export';
+  if (/\.pdf$/i.test(t)) return t;
+  const replaced = t.replace(/\.[^./\\]+$/i, '.pdf');
+  if (replaced !== t) return replaced;
+  return `${t}.pdf`;
+}
+
 function App() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -56,12 +87,48 @@ function App() {
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [overDropId, setOverDropId] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const libraryImageInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef(photos);
+  const isPickingRef = useRef(false);
+  const libraryPickFocusHandlerRef = useRef<(() => void) | null>(null);
   const { isPro, isLoading, purchase, restore, resetPurchase } = usePurchase();
   const { generatePdf, savePdf } = usePdf();
   const { showInterstitial } = useAdMob(isPro);
+
+  const [paperSize, setPaperSize] = useState<PaperSizeId>('a4');
+  const [pdfQuality, setPdfQuality] = useState<PdfQualityId>(loadPdfQuality);
+
+  useEffect(() => {
+    const stored = loadPaperSize();
+    if (isPro) {
+      setPaperSize(stored);
+    } else if (stored === 'a3' || stored === 'b5') {
+      setPaperSize('a4');
+    } else {
+      setPaperSize(stored);
+    }
+  }, [isPro]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('paperSize', paperSize);
+    } catch {
+      /* ignore */
+    }
+  }, [paperSize]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pdfQuality', pdfQuality);
+    } catch {
+      /* ignore */
+    }
+  }, [pdfQuality]);
+
+  const effectivePaperSize: PaperSizeId =
+    !isPro && (paperSize === 'a3' || paperSize === 'b5') ? 'a4' : paperSize;
 
   useEffect(() => {
     photosRef.current = photos;
@@ -124,7 +191,47 @@ function App() {
 
   const canAddMore = isPro || photos.length < MAX_FREE_PHOTOS;
 
-  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+  const mergePhotosIntoState = useCallback((additions: Photo[]) => {
+    if (additions.length === 0) return;
+    setPhotos((prev) => {
+      const cap = isPro ? Infinity : MAX_FREE_PHOTOS;
+      const room = cap - prev.length;
+      return [...prev, ...additions.slice(0, room)];
+    });
+  }, [isPro]);
+
+  const handleLibraryImageChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    libraryPickFocusHandlerRef.current?.();
+    libraryPickFocusHandlerRef.current = null;
+    isPickingRef.current = false;
+
+    const input = e.target;
+    const fileList = input.files ? Array.from(input.files) : [];
+    input.value = '';
+    if (!fileList.length) return;
+
+    let remaining = isPro ? Infinity : MAX_FREE_PHOTOS - photosRef.current.length;
+    const additions: Photo[] = [];
+
+    try {
+      for (const file of fileList) {
+        if (remaining <= 0) break;
+        if (!file.type.startsWith('image/')) continue;
+        const dataUrl = await readFileAsDataUrl(file);
+        additions.push({
+          id: crypto.randomUUID(),
+          dataUrl,
+          fileName: file.name,
+        });
+        remaining -= 1;
+      }
+      mergePhotosIntoState(additions);
+    } catch {
+      alert('ファイルの取り込みに失敗しました。');
+    }
+  };
+
+  const handlePdfFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
     const fileList = input.files ? Array.from(input.files) : [];
     input.value = '';
@@ -137,34 +244,57 @@ function App() {
       for (const file of fileList) {
         if (remaining <= 0) break;
         const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-        if (isPdf) {
-          const { pdfFileToPhotos } = await import('./lib/pdfToPhotos');
-          const buf = await file.arrayBuffer();
-          const maxPages = remaining === Infinity ? 999 : remaining;
-          const pages = await pdfFileToPhotos(buf, file.name, maxPages);
-          additions.push(...pages);
-          remaining -= pages.length;
-        } else if (file.type.startsWith('image/')) {
-          const dataUrl = await readFileAsDataUrl(file);
-          additions.push({
-            id: crypto.randomUUID(),
-            dataUrl,
-            fileName: file.name,
-          });
-          remaining -= 1;
-        }
+        if (!isPdf) continue;
+        const { pdfFileToPhotos } = await import('./lib/pdfToPhotos');
+        const buf = await file.arrayBuffer();
+        const maxPages = remaining === Infinity ? 999 : remaining;
+        const pages = await pdfFileToPhotos(buf, file.name, maxPages);
+        additions.push(...pages);
+        remaining -= pages.length;
       }
-      if (additions.length > 0) {
-        setPhotos((prev) => {
-          const cap = isPro ? Infinity : MAX_FREE_PHOTOS;
-          const room = cap - prev.length;
-          return [...prev, ...additions.slice(0, room)];
-        });
-      }
+      mergePhotosIntoState(additions);
     } catch {
-      alert('ファイルの取り込みに失敗しました。');
+      alert('PDFの取り込みに失敗しました。');
     }
   };
+
+  const pickImagesFromNative = useCallback(async () => {
+    if (!canAddMore || isPickingRef.current) return;
+    const cap = isPro ? Infinity : MAX_FREE_PHOTOS;
+    const room = cap - photosRef.current.length;
+    if (room <= 0) return;
+
+    isPickingRef.current = true;
+    try {
+      const { Camera } = await import('@capacitor/camera');
+      const limit = room === Infinity ? 0 : room;
+      const { photos: galleryPhotos } = await Camera.pickImages({
+        quality: 90,
+        limit,
+        ...CAMERA_PROMPT_LABELS,
+      } as GalleryImageOptions);
+
+      const additions: Photo[] = [];
+      let remaining = room;
+      for (let i = 0; i < galleryPhotos.length && remaining > 0; i++) {
+        const gp = galleryPhotos[i];
+        const dataUrl = await webPathToDataUrl(gp.webPath);
+        const name =
+          (gp.path && gp.path.split(/[/\\]/).pop()) || `image_${Date.now()}_${i}.jpg`;
+        additions.push({
+          id: crypto.randomUUID(),
+          dataUrl,
+          fileName: name,
+        });
+        remaining -= 1;
+      }
+      mergePhotosIntoState(additions);
+    } catch {
+      /* キャンセル含む */
+    } finally {
+      isPickingRef.current = false;
+    }
+  }, [canAddMore, isPro, mergePhotosIntoState]);
 
   const handleCamera = async () => {
     if (!canAddMore) return;
@@ -175,7 +305,7 @@ function App() {
         allowEditing: false,
         resultType: CameraResultType.DataUrl,
         source: CameraSource.Camera,
-        ...CAMERA_PROMPT_LABELS,
+        saveToGallery: false,
       });
       const dataUrl = image.dataUrl;
       if (dataUrl) {
@@ -194,8 +324,29 @@ function App() {
   };
 
   const handleLibraryPick = () => {
+    if (!canAddMore || isPickingRef.current) return;
+    if (Capacitor.isNativePlatform()) {
+      void pickImagesFromNative();
+      return;
+    }
+    isPickingRef.current = true;
+    const onWinFocus = () => {
+      libraryPickFocusHandlerRef.current = null;
+      window.setTimeout(() => {
+        isPickingRef.current = false;
+      }, 350);
+    };
+    libraryPickFocusHandlerRef.current = () => {
+      window.removeEventListener('focus', onWinFocus);
+      libraryPickFocusHandlerRef.current = null;
+    };
+    window.addEventListener('focus', onWinFocus, { once: true });
+    libraryImageInputRef.current?.click();
+  };
+
+  const handlePdfPick = () => {
     if (!canAddMore) return;
-    fileInputRef.current?.click();
+    pdfInputRef.current?.click();
   };
 
   const removePhoto = (id: string) => {
@@ -217,6 +368,15 @@ function App() {
     setShowPdfNameSheet(true);
   };
 
+  const onCreatePdfClick = () => {
+    if (photos.length === 0 || isGenerating) return;
+    if (pdfMergeMode === 'individual') {
+      void runIndividualPdfGeneration();
+      return;
+    }
+    openPdfNameSheet();
+  };
+
   const closeRenameSheet = () => {
     setShowRenameSheet(false);
     setRenamePhotoId(null);
@@ -231,15 +391,29 @@ function App() {
       const safe = baseName.replace(/\.pdf$/i, '').trim();
       const stem = safe.length > 0 ? safe : formatPdfBaseName();
       const list = [...photos];
-      if (pdfMergeMode === 'individual') {
-        for (let i = 0; i < list.length; i++) {
-          const blob = await generatePdf([list[i]]);
-          const nameStem = list[i].fileName.replace(/\.[^/.]+$/, '') || `ページ${i + 1}`;
-          await savePdf(blob, `${nameStem}.pdf`);
-        }
-      } else {
-        const blob = await generatePdf(list);
-        await savePdf(blob, `${stem}.pdf`);
+      const blob = await generatePdf(list, effectivePaperSize, pdfQuality);
+      await savePdf(blob, `${stem}.pdf`);
+      setIsDone(true);
+      await showInterstitial();
+    } catch {
+      alert('PDF生成に失敗しました。');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const runIndividualPdfGeneration = async () => {
+    if (photos.length === 0) return;
+    setShowPdfNameSheet(false);
+    setShowRenameSheet(false);
+    setRenamePhotoId(null);
+    setIsGenerating(true);
+    setIsDone(false);
+    try {
+      const list = [...photos];
+      for (let i = 0; i < list.length; i++) {
+        const blob = await generatePdf([list[i]], effectivePaperSize, pdfQuality);
+        await savePdf(blob, fileNameToPdfOutputName(list[i].fileName));
       }
       setIsDone(true);
       await showInterstitial();
@@ -318,6 +492,15 @@ function App() {
             <span className="quick-add-btn-icon" aria-hidden>🗂️</span>
             ライブラリ
           </button>
+          <button
+            type="button"
+            className="quick-add-btn"
+            disabled={!canAddMore || isLoading}
+            onClick={handlePdfPick}
+          >
+            <span className="quick-add-btn-icon" aria-hidden>📄</span>
+            PDF
+          </button>
         </div>
 
         {!isPro && (
@@ -355,7 +538,7 @@ function App() {
                   まとめ
                 </button>
               </div>
-              <button type="button" className="generate-btn" onClick={openPdfNameSheet} disabled={isGenerating}>
+              <button type="button" className="generate-btn" onClick={onCreatePdfClick} disabled={isGenerating}>
                 {isGenerating ? 'PDF生成中...' : `PDFを作成 ${photos.length}枚 →`}
               </button>
             </div>
@@ -367,7 +550,7 @@ function App() {
       <div className="photo-grid-scroll">
         <div className="photo-grid-wrap">
           {isEmpty ? (
-            <p className="photo-grid-hint">撮影またはライブラリから、写真・PDFを追加してください</p>
+            <p className="photo-grid-hint">撮影・ライブラリ（写真）・PDFボタンから追加してください</p>
           ) : (
             <div className="photo-grid">
               <DndContext
@@ -421,14 +604,29 @@ function App() {
       </div>
 
       <input
-        ref={fileInputRef}
+        ref={libraryImageInputRef}
         type="file"
-        accept="image/*,.pdf"
+        accept="image/*"
         multiple
         className="file-input-hidden"
-        onChange={(e) => void handleFileChange(e)}
+        onChange={(e) => void handleLibraryImageChange(e)}
       />
-      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFileChange} />
+      <input
+        ref={pdfInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        multiple
+        className="file-input-hidden"
+        onChange={(e) => void handlePdfFileChange(e)}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={(e) => void handleLibraryImageChange(e)}
+      />
 
       {showPdfNameSheet && (
         <PdfNameSheet
@@ -467,6 +665,17 @@ function App() {
           onRestore={handleRestore}
           onClose={() => setShowProModal(false)}
           isLoading={isLoading}
+          isPro={isPro}
+          paperSize={paperSize}
+          onPaperSizeChange={setPaperSize}
+          pdfQuality={pdfQuality}
+          onPdfQualityChange={setPdfQuality}
+          onLockedPaperOptionTap={() => {
+            document.getElementById('settings-pro-section')?.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start',
+            });
+          }}
         />
       )}
     </div>
