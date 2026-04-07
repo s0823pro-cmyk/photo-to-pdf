@@ -340,7 +340,6 @@ export const SettingsModal = ({
                         <p className="settings-pro-guideline">📱 目安: 超低画質で約35枚（iPhone 17 Pro）</p>
                         <p className="settings-pro-disclaimer">※端末性能・画質設定により異なります</p>
                       </div>
-                      <p className="original-price settings-purchase-free__price">通常価格 ¥1,200</p>
                       <div className="limited-time-banner">
                         <span className="limited-time-icon">⏰</span>
                         <div className="limited-time-text">
@@ -349,7 +348,14 @@ export const SettingsModal = ({
                         </div>
                       </div>
                       <button type="button" className="modal-buy-btn" onClick={onPurchase} disabled={isLoading}>
-                        {isLoading ? '処理中...' : '¥500 で購入（期間限定）'}
+                        {isLoading ? (
+                          <span className="buy-btn-label">処理中...</span>
+                        ) : (
+                          <>
+                            <span className="buy-btn-original-price">通常価格 ¥1,200</span>
+                            <span className="buy-btn-label">¥500 で購入（期間限定）</span>
+                          </>
+                        )}
                       </button>
                       <button type="button" className="modal-restore-btn settings-purchase-free__restore" onClick={onRestore} disabled={isLoading}>
                         購入を復元

@@ -785,14 +785,6 @@ body {
   letter-spacing: 0.3px;
 }
 
-.original-price {
-  font-size: 11px;
-  color: #aeaeb2;
-  text-decoration: line-through;
-  text-align: center;
-  margin: 0;
-}
-
 .modal-desc {
   font-size: 14px;
   color: #8e8e93;
@@ -829,15 +821,32 @@ body {
 
 .modal-buy-btn {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   padding: 12px;
   background: #ff3b30;
   color: #fff;
   border: none;
   border-radius: 14px;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: inherit;
+  font-weight: inherit;
   cursor: pointer;
   margin-top: 2px;
+}
+
+.buy-btn-original-price {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.65);
+  text-decoration: line-through;
+  line-height: 1;
+}
+
+.buy-btn-label {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .modal-buy-btn:disabled {
@@ -1289,10 +1298,6 @@ body {
   color: #c7c7cc;
   margin: 2px 0 0;
   line-height: 1.45;
-}
-
-.settings-purchase-free__price {
-  margin: 0;
 }
 
 .settings-purchase-free__restore {
