@@ -6,7 +6,7 @@ const PDF_QUALITY_NUM: Record<PdfQualityId, number> = {
   high: 0.92,
   medium: 0.7,
   low: 0.45,
-  ultra_low: 0.25,
+  ultra_low: 0.4,
 };
 
 /** 長辺の上限（px）。画質が低いほど小さくしてメモリを抑える */
@@ -14,7 +14,7 @@ const MAX_SIZE_BY_QUALITY: Record<PdfQualityId, number> = {
   high: 1600,
   medium: 1200,
   low: 800,
-  ultra_low: 400,
+  ultra_low: 600,
 };
 
 /** 縦（portrait）固定の用紙サイズ mm（幅 < 高さ） */
