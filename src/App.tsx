@@ -74,10 +74,28 @@ function fileNameToPdfOutputName(fileName: string): string {
   return `${t}.pdf`;
 }
 
+function normalizePhotoOrientation(o: Photo['orientation']): 'auto' | 'portrait' | 'landscape' {
+  if (o === 'portrait') return 'portrait';
+  if (o === 'landscape') return 'landscape';
+  return 'auto';
+}
+
+/** 全写真が同じ向きのときだけそのモード。混在時は null（セグメントをハイライトしない） */
+function getBulkOrientationHighlight(photos: Photo[]): 'auto' | 'portrait' | 'landscape' | null {
+  if (photos.length === 0) return null;
+  const n0 = normalizePhotoOrientation(photos[0].orientation);
+  for (let i = 1; i < photos.length; i++) {
+    if (normalizePhotoOrientation(photos[i].orientation) !== n0) return null;
+  }
+  return n0;
+}
+
 function App() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDone, setIsDone] = useState(false);
+  /** 完了メッセージ: ネイティブで Share まで終えた場合 true */
+  const [doneWithNativeShare, setDoneWithNativeShare] = useState(false);
   const [showProModal, setShowProModal] = useState(false);
   const [showPdfNameSheet, setShowPdfNameSheet] = useState(false);
   const [pdfNameDefault, setPdfNameDefault] = useState('');
@@ -105,9 +123,15 @@ function App() {
     setShowProModal(open);
   };
 
-  // TEMP(動作確認用): 無料でも LS の A3/B5 を維持 — 本番前に isPro 分岐を復帰すること
   useEffect(() => {
-    setPaperSize(loadPaperSize());
+    const stored = loadPaperSize();
+    if (isPro) {
+      setPaperSize(stored);
+    } else if (stored === 'a3' || stored === 'b5') {
+      setPaperSize('a4');
+    } else {
+      setPaperSize(stored);
+    }
   }, [isPro]);
 
   useEffect(() => {
@@ -137,8 +161,8 @@ function App() {
     }
   }, [pdfQuality]);
 
-  // TEMP(動作確認用): 無料でも選択用紙をそのまま PDF に反映 — 本番前に isPro ガードを復帰すること
-  const effectivePaperSize: PaperSizeId = paperSize;
+  const effectivePaperSize: PaperSizeId =
+    !isPro && (paperSize === 'a3' || paperSize === 'b5') ? 'a4' : paperSize;
 
   const effectivePdfQuality: PdfQualityId =
     !isPro && (pdfQuality === 'medium' || pdfQuality === 'low') ? 'high' : pdfQuality;
@@ -365,6 +389,7 @@ function App() {
   const removePhoto = (id: string) => {
     setPhotos((prev) => prev.filter((p) => p.id !== id));
     setIsDone(false);
+    setDoneWithNativeShare(false);
     setPreviewId((cur) => (cur === id ? null : cur));
     if (renamePhotoId === id) {
       setShowRenameSheet(false);
@@ -400,12 +425,14 @@ function App() {
     setShowPdfNameSheet(false);
     setIsGenerating(true);
     setIsDone(false);
+    setDoneWithNativeShare(false);
     try {
       const safe = baseName.replace(/\.pdf$/i, '').trim();
       const stem = safe.length > 0 ? safe : formatPdfBaseName();
       const list = [...photos];
       const blob = await generatePdf(list, effectivePaperSize, effectivePdfQuality);
-      await savePdf(blob, `${stem}.pdf`);
+      const usedNativeShare = await savePdf(blob, `${stem}.pdf`);
+      setDoneWithNativeShare(usedNativeShare);
       setIsDone(true);
       await showInterstitial();
     } catch {
@@ -422,12 +449,16 @@ function App() {
     setRenamePhotoId(null);
     setIsGenerating(true);
     setIsDone(false);
+    setDoneWithNativeShare(false);
     try {
       const list = [...photos];
+      let usedNativeShare = false;
       for (let i = 0; i < list.length; i++) {
         const blob = await generatePdf([list[i]], effectivePaperSize, effectivePdfQuality);
-        await savePdf(blob, fileNameToPdfOutputName(list[i].fileName));
+        const u = await savePdf(blob, fileNameToPdfOutputName(list[i].fileName));
+        if (u) usedNativeShare = true;
       }
+      setDoneWithNativeShare(usedNativeShare);
       setIsDone(true);
       await showInterstitial();
     } catch {
@@ -440,10 +471,20 @@ function App() {
   const handleReset = () => {
     setPhotos([]);
     setIsDone(false);
+    setDoneWithNativeShare(false);
     setPreviewId(null);
   };
 
+  const applyBulkOrientation = (mode: 'auto' | 'portrait' | 'landscape') => {
+    setPhotos((prev) =>
+      prev.map((p) =>
+        mode === 'auto' ? { ...p, orientation: undefined } : { ...p, orientation: mode },
+      ),
+    );
+  };
+
   const isEmpty = photos.length === 0;
+  const bulkOrientHighlight = !isEmpty ? getBulkOrientationHighlight(photos) : null;
 
   return (
     <div className="app">
@@ -455,9 +496,34 @@ function App() {
           </div>
           <div className="header-actions">
             {!isEmpty && (
-              <button type="button" className="reset-btn reset-btn--header" onClick={handleReset}>
-                リセット
-              </button>
+              <>
+                <div className="header-bulk-orient" role="group" aria-label="すべての写真の向き">
+                  <button
+                    type="button"
+                    className={`header-bulk-seg${bulkOrientHighlight === 'auto' ? ' header-bulk-seg--active' : ''}`}
+                    onClick={() => applyBulkOrientation('auto')}
+                  >
+                    自動
+                  </button>
+                  <button
+                    type="button"
+                    className={`header-bulk-seg${bulkOrientHighlight === 'portrait' ? ' header-bulk-seg--active' : ''}`}
+                    onClick={() => applyBulkOrientation('portrait')}
+                  >
+                    縦
+                  </button>
+                  <button
+                    type="button"
+                    className={`header-bulk-seg${bulkOrientHighlight === 'landscape' ? ' header-bulk-seg--active' : ''}`}
+                    onClick={() => applyBulkOrientation('landscape')}
+                  >
+                    横
+                  </button>
+                </div>
+                <button type="button" className="reset-btn reset-btn--header" onClick={handleReset}>
+                  リセット
+                </button>
+              </>
             )}
             {isPro && (
               <button
@@ -523,7 +589,7 @@ function App() {
           </button>
         </div>
 
-        {!isPro && (
+        {!isPro && photos.length >= MAX_FREE_PHOTOS && (
           <div className="limit-bar">
             <div className="limit-info">
               <span className="limit-label">使用枚数</span>
@@ -533,7 +599,7 @@ function App() {
                 ))}
               </div>
             </div>
-            <button type="button" className="pro-btn" disabled={isLoading} onClick={() => setShowProModal(true)}>
+            <button type="button" className="pro-btn" disabled={isLoading} onClick={() => setShowSettings(true)}>
               無制限 ¥500
             </button>
           </div>
@@ -558,11 +624,26 @@ function App() {
                   まとめ
                 </button>
               </div>
-              <button type="button" className="generate-btn" onClick={onCreatePdfClick} disabled={isGenerating}>
-                {isGenerating ? 'PDF生成中...' : `PDFを作成 ${photos.length}枚 →`}
-              </button>
+              <div className="generate-btn-wrap">
+                <span className="generate-badge" aria-hidden>
+                  {photos.length}
+                </span>
+                <button
+                  type="button"
+                  className="generate-btn"
+                  onClick={onCreatePdfClick}
+                  disabled={isGenerating}
+                  aria-label={isGenerating ? 'PDF生成中' : `PDFを生成（${photos.length}枚）`}
+                >
+                  {isGenerating ? 'PDF生成中...' : 'PDFを生成'}
+                </button>
+              </div>
             </div>
-            {isDone && <p className="done-msg">✅ PDFを保存しました！</p>}
+            {isDone && (
+              <p className="done-msg">
+                {doneWithNativeShare ? '✅ PDFを共有・保存しました！' : '✅ PDFを保存しました！'}
+              </p>
+            )}
           </div>
         )}
       </div>

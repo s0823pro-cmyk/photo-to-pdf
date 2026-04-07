@@ -13,11 +13,10 @@ interface Props {
   onLockedPaperOptionTap: () => void;
 }
 
-// TEMP(動作確認用): 用紙 A3/B5 の Pro ロック解除 — 本番前に proOnly を戻すこと
 const PAPER_OPTIONS: { id: PaperSizeId; label: string; sub: string; proOnly: boolean }[] = [
-  { id: 'a3', label: 'A3', sub: '420 × 297mm', proOnly: false },
+  { id: 'a3', label: 'A3', sub: '420 × 297mm', proOnly: true },
   { id: 'a4', label: 'A4', sub: '210 × 297mm', proOnly: false },
-  { id: 'b5', label: 'B5', sub: '182 × 257mm', proOnly: false },
+  { id: 'b5', label: 'B5', sub: '182 × 257mm', proOnly: true },
 ];
 
 const QUALITY_OPTIONS: { id: PdfQualityId; label: string; proOnly: boolean }[] = [

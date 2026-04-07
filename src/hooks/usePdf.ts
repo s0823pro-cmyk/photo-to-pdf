@@ -8,19 +8,19 @@ const PDF_QUALITY_NUM: Record<PdfQualityId, number> = {
   low: 0.45,
 };
 
-/** 縦向き基準の用紙幅・高さ（mm）。横向きページでは w/h を入れ替える */
-const PAPER_PORTRAIT_MM: Record<PaperSizeId, { w: number; h: number }> = {
-  a3: { w: 297, h: 420 },
-  a4: { w: 210, h: 297 },
-  b5: { w: 182, h: 257 },
+/** 縦向き（portrait）基準の用紙サイズ mm。landscape 時は width/height を入れ替え */
+const PAPER_SIZES: Record<PaperSizeId, { width: number; height: number }> = {
+  a4: { width: 210, height: 297 },
+  a3: { width: 297, height: 420 },
+  b5: { width: 182, height: 257 },
 };
 
 function pageDimensionsMm(paperSize: PaperSizeId, landscapePage: boolean): { pageWidth: number; pageHeight: number } {
-  const { w, h } = PAPER_PORTRAIT_MM[paperSize];
+  const s = PAPER_SIZES[paperSize];
   if (landscapePage) {
-    return { pageWidth: h, pageHeight: w };
+    return { pageWidth: s.height, pageHeight: s.width };
   }
-  return { pageWidth: w, pageHeight: h };
+  return { pageWidth: s.width, pageHeight: s.height };
 }
 
 const correctImageOrientation = (dataUrl: string, quality: number): Promise<string> => {
@@ -70,17 +70,24 @@ export const usePdf = () => {
       const img = await loadImage(correctedDataUrl);
       const imgRatio = img.width / img.height;
       const landscapePage = isLandscapePage(photos[i], imgRatio);
-      const orient = landscapePage ? 'landscape' : 'portrait';
       const { pageWidth, pageHeight } = pageDimensionsMm(paperSize, landscapePage);
+
+      // TODO(本番前削除): 用紙・ページ寸法デバッグ
+      console.log('[generatePdf page]', {
+        index: i,
+        paperSize,
+        pageWidth,
+        pageHeight,
+        isLandscape: landscapePage,
+      });
 
       if (i === 0) {
         pdf = new jsPDF({
-          orientation: orient,
           unit: 'mm',
           format: [pageWidth, pageHeight],
         });
       } else {
-        pdf!.addPage([pageWidth, pageHeight], orient);
+        pdf!.addPage([pageWidth, pageHeight]);
       }
 
       const pageRatio = pageWidth / pageHeight;
@@ -102,7 +109,8 @@ export const usePdf = () => {
     return pdf!.output('blob');
   };
 
-  const savePdf = async (blob: Blob, fileName: string): Promise<void> => {
+  /** @returns ネイティブで共有シートまで完了したら true（Web のダウンロードは false） */
+  const savePdf = async (blob: Blob, fileName: string): Promise<boolean> => {
     if (Capacitor.isNativePlatform()) {
       const { Filesystem, Directory } = await import('@capacitor/filesystem');
       const { Share } = await import('@capacitor/share');
@@ -128,14 +136,16 @@ export const usePdf = () => {
         url: result.uri,
         dialogTitle: '共有',
       });
-    } else {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(url);
+      return true;
     }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+    return false;
   };
 
   return { generatePdf, savePdf };
