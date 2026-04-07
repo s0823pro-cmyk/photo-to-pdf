@@ -392,6 +392,7 @@ function App() {
         resultType: CameraResultType.DataUrl,
         source: CameraSource.Camera,
         saveToGallery: false,
+        correctOrientation: true,
       });
       const dataUrl = image.dataUrl;
       if (dataUrl) {

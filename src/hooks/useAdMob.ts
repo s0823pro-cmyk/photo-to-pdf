@@ -3,6 +3,12 @@ import { useCallback, useEffect, useRef } from 'react';
 
 const BANNER_ID_ANDROID = 'ca-app-pub-6731542556992059/4336048057';
 const INTERSTITIAL_ID_ANDROID = 'ca-app-pub-6731542556992059/9476694093';
+const BANNER_ID_IOS = 'ca-app-pub-6731542556992059/7754819825';
+const INTERSTITIAL_ID_IOS = 'ca-app-pub-6731542556992059/1035061900';
+
+const platform = Capacitor.getPlatform();
+const BANNER_ID = platform === 'ios' ? BANNER_ID_IOS : BANNER_ID_ANDROID;
+const INTERSTITIAL_ID = platform === 'ios' ? INTERSTITIAL_ID_IOS : INTERSTITIAL_ID_ANDROID;
 
 // テスト用ID（開発中はこちらを使う）
 const BANNER_TEST = 'ca-app-pub-3940256099942544/6300978111';
@@ -18,7 +24,7 @@ export const useAdMob = (isPro: boolean) => {
     try {
       const { AdMob } = await import('@capacitor-community/admob');
       await AdMob.prepareInterstitial({
-        adId: IS_DEV ? INTERSTITIAL_TEST : INTERSTITIAL_ID_ANDROID,
+        adId: IS_DEV ? INTERSTITIAL_TEST : INTERSTITIAL_ID,
         isTesting: IS_DEV,
       });
       interstitialReady.current = true;
@@ -55,7 +61,7 @@ export const useAdMob = (isPro: boolean) => {
         });
 
         await AdMob.showBanner({
-          adId: IS_DEV ? BANNER_TEST : BANNER_ID_ANDROID,
+          adId: IS_DEV ? BANNER_TEST : BANNER_ID,
           adSize: BannerAdSize.BANNER,
           position: BannerAdPosition.BOTTOM_CENTER,
           margin: 0,
