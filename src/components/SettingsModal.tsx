@@ -259,6 +259,13 @@ export const SettingsModal = ({
                     <div className="settings-purchase-free">
                       <p className="settings-purchase-free__title">無制限プラン</p>
                       <p className="original-price settings-purchase-free__price">通常価格 ¥1,200</p>
+                      <div className="limited-time-banner">
+                        <span className="limited-time-icon">⏰</span>
+                        <div className="limited-time-text">
+                          <p className="limited-time-title">期間限定価格</p>
+                          <p className="limited-time-sub">リリース記念特別価格！いつ終わるかわかりません</p>
+                        </div>
+                      </div>
                       <button type="button" className="modal-buy-btn" onClick={onPurchase} disabled={isLoading}>
                         {isLoading ? '処理中...' : '¥500 で購入（期間限定）'}
                       </button>
