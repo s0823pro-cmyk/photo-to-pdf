@@ -8,8 +8,20 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <title>photo-to-pdf</title>
+    <style>
+      * {
+        -webkit-user-select: none !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
+      }
+      input,
+      textarea {
+        -webkit-user-select: text !important;
+        user-select: text !important;
+      }
+    </style>
   </head>
-  <body>
+  <body oncontextmenu="return false;">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

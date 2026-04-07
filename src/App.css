@@ -6,16 +6,25 @@
   padding: 0;
 }
 
-* {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
+html,
+body,
+#root {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
 }
 
+* {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+/* 入力欄のみ許可 */
 input,
 textarea {
-  -webkit-user-select: text;
-  user-select: text;
+  -webkit-user-select: text !important;
+  user-select: text !important;
 }
 
 img {
