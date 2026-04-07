@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import * as exifr from 'exifr';
 import type { Photo, PaperSizeId, PdfQualityId } from '../types';
 import { Capacitor } from '@capacitor/core';
 
@@ -22,6 +23,15 @@ function pageDimensionsMm(paperSize: PaperSizeId, landscapePage: boolean): { pag
   }
   return { pageWidth: s.width, pageHeight: s.height };
 }
+
+const getImageOrientation = async (dataUrl: string): Promise<number> => {
+  try {
+    const result = await exifr.parse(dataUrl, ['Orientation']);
+    return result?.Orientation ?? 1;
+  } catch {
+    return 1;
+  }
+};
 
 const correctImageOrientation = (
   dataUrl: string,
@@ -64,11 +74,13 @@ export const usePdf = () => {
     let pdf: jsPDF | null = null;
 
     for (let i = 0; i < photos.length; i++) {
+      const orientation = await getImageOrientation(photos[i].dataUrl);
       const { dataUrl: correctedDataUrl, width: imgW, height: imgH } = await correctImageOrientation(
         photos[i].dataUrl,
         quality,
       );
-      const imgRatio = imgW / imgH;
+      const isRotated = orientation === 6 || orientation === 8;
+      const imgRatio = isRotated ? imgH / imgW : imgW / imgH;
       const landscapePage = isLandscapePage(photos[i], imgRatio);
       const { pageWidth, pageHeight } = pageDimensionsMm(paperSize, landscapePage);
 
