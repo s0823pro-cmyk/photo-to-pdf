@@ -1,13 +1,28 @@
 import { useEffect, useState, useRef, type ChangeEvent } from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import { arrayMove, SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
 import { Capacitor } from '@capacitor/core';
 import { type Photo, MAX_FREE_PHOTOS } from './types';
 import { SettingsModal } from './components/SettingsModal';
 import { PdfNameSheet } from './components/PdfNameSheet';
 import { PhotoPreviewModal } from './components/PhotoPreviewModal';
+import { SortablePhotoCard } from './components/SortablePhotoCard';
+import { RenamePhotoSheet } from './components/RenamePhotoSheet';
 import { useAdMob } from './hooks/useAdMob';
 import { usePurchase } from './hooks/usePurchase';
 import { usePdf } from './hooks/usePdf';
 import { CAMERA_PROMPT_LABELS, webPathToDataUrl } from './lib/cameraHelpers';
+import { truncateFileName } from './lib/formatFilename';
 import './App.css';
 
 function formatPdfBaseName(d = new Date()): string {
@@ -27,6 +42,9 @@ function App() {
   const [showPdfNameSheet, setShowPdfNameSheet] = useState(false);
   const [pdfNameDefault, setPdfNameDefault] = useState('');
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [renamePhotoId, setRenamePhotoId] = useState<string | null>(null);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [overDropId, setOverDropId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { isPro, isLoading, purchase, restore, resetPurchase } = usePurchase();
@@ -34,6 +52,45 @@ function App() {
   const { showInterstitial } = useAdMob(isPro);
 
   const previewPhoto = previewId ? photos.find((p) => p.id === previewId) : undefined;
+  const renamePhoto = renamePhotoId ? photos.find((p) => p.id === renamePhotoId) : undefined;
+  const activeDragPhoto = activeDragId ? photos.find((p) => p.id === activeDragId) : undefined;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        delay: 450,
+        tolerance: 10,
+      },
+    }),
+  );
+
+  const photoIds = photos.map((p) => p.id);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    setOverDropId((event.over?.id as string) ?? null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragId(null);
+    setOverDropId(null);
+    if (!over || active.id === over.id) return;
+    setPhotos((items) => {
+      const oldIndex = items.findIndex((p) => p.id === active.id);
+      const newIndex = items.findIndex((p) => p.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return items;
+      return arrayMove(items, oldIndex, newIndex);
+    });
+  };
+
+  const handleDragCancel = () => {
+    setActiveDragId(null);
+    setOverDropId(null);
+  };
 
   useEffect(() => {
     if (isPro) setShowProModal(false);
@@ -107,7 +164,8 @@ function App() {
           quality: 90,
           limit: isPro ? 0 : remaining,
           correctOrientation: true,
-        });
+          ...CAMERA_PROMPT_LABELS,
+        } as import('@capacitor/camera').GalleryImageOptions);
         const newItems: Photo[] = [];
         let i = 0;
         for (const p of picked) {
@@ -137,14 +195,6 @@ function App() {
     setPhotos((prev) => prev.filter((p) => p.id !== id));
     setIsDone(false);
     setPreviewId((cur) => (cur === id ? null : cur));
-  };
-
-  const movePhoto = (index: number, dir: 'up' | 'down') => {
-    const next = [...photos];
-    const swap = dir === 'up' ? index - 1 : index + 1;
-    if (swap < 0 || swap >= next.length) return;
-    [next[index], next[swap]] = [next[swap], next[index]];
-    setPhotos(next);
   };
 
   const openPdfNameSheet = () => {
@@ -215,6 +265,29 @@ function App() {
         </div>
       </header>
 
+      {!isEmpty && (
+        <div className="quick-add-bar">
+          <button
+            type="button"
+            className="quick-add-btn"
+            disabled={!canAddMore || isLoading}
+            onClick={() => void handleCamera()}
+          >
+            <span className="quick-add-btn-icon" aria-hidden>📷</span>
+            撮影
+          </button>
+          <button
+            type="button"
+            className="quick-add-btn"
+            disabled={!canAddMore || isLoading}
+            onClick={() => void handleLibraryPick()}
+          >
+            <span className="quick-add-btn-icon" aria-hidden>🗂️</span>
+            ライブラリ
+          </button>
+        </div>
+      )}
+
       {!isPro && !isEmpty && (
         <div className="limit-bar">
           <div className="limit-info">
@@ -248,85 +321,47 @@ function App() {
       ) : (
         <>
           <div className="photo-grid">
-            {photos.map((photo, i) => (
-              <div key={photo.id} className="photo-card">
-                <div className="photo-thumb-wrap">
-                  <button
-                    type="button"
-                    className="photo-thumb-btn"
-                    onClick={() => setPreviewId(photo.id)}
-                    aria-label={`${photo.fileName}を拡大表示`}
-                  >
-                    <img src={photo.dataUrl} alt="" />
-                  </button>
-                  <div className="photo-overlay">
-                    <button type="button" className="overlay-btn" onClick={() => removePhoto(photo.id)} aria-label="削除">✕</button>
-                  </div>
-                </div>
-                <div className="photo-footer">
-                  <div className="photo-order">
-                    <button type="button" className="order-btn" onClick={() => movePhoto(i, 'up')} disabled={i === 0} aria-label="上へ">↑</button>
-                    <span className="order-num">{i + 1}</span>
-                    <button type="button" className="order-btn" onClick={() => movePhoto(i, 'down')} disabled={i === photos.length - 1} aria-label="下へ">↓</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {canAddMore ? (
-              <div className="add-buttons">
-                <div
-                  className="add-card"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => void handleCamera()}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      void handleCamera();
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <SortableContext items={photoIds} strategy={rectSortingStrategy}>
+                {photos.map((photo, i) => (
+                  <SortablePhotoCard
+                    key={photo.id}
+                    photo={photo}
+                    index={i}
+                    isDropTarget={
+                      Boolean(activeDragId && overDropId === photo.id && activeDragId !== photo.id)
                     }
-                  }}
-                >
-                  <div className="add-icon">📷</div>
-                  <span className="add-label">撮影</span>
-                  <span className="add-sublabel">カメラを起動</span>
-                </div>
-                <div
-                  className="add-card"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => void handleLibraryPick()}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      void handleLibraryPick();
-                    }
-                  }}
-                >
-                  <div className="add-icon">🗂️</div>
-                  <span className="add-label">ライブラリ</span>
-                  <span className="add-sublabel">複数選択OK</span>
-                </div>
-              </div>
-            ) : (
-              <div
-                className={`limit-card${isLoading ? ' limit-card--busy' : ''}`}
-                role="button"
-                tabIndex={isLoading ? -1 : 0}
-                onClick={() => setShowProModal(true)}
-                onKeyDown={(e) => {
-                  if (isLoading) return;
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setShowProModal(true);
-                  }
-                }}
-              >
-                <div className="lock-icon">🔒</div>
-                <span className="limit-card-label">5枚まで（無料）</span>
-                <span className="limit-card-sub">タップで無制限に</span>
-              </div>
-            )}
+                    onPreview={() => setPreviewId(photo.id)}
+                    onRemove={() => removePhoto(photo.id)}
+                    onRename={() => setRenamePhotoId(photo.id)}
+                  />
+                ))}
+              </SortableContext>
+              <DragOverlay adjustScale={false}>
+                {activeDragPhoto ? (
+                  <div className="photo-card photo-card--overlay-clone">
+                    <span className="photo-num-badge" aria-hidden>
+                      {photos.findIndex((p) => p.id === activeDragPhoto.id) + 1}
+                    </span>
+                    <div className="photo-thumb-wrap">
+                      <div className="photo-filename-overlay photo-filename-overlay--static">
+                        {truncateFileName(activeDragPhoto.fileName, 15)}
+                      </div>
+                      <div className="photo-thumb-btn photo-thumb-btn--static">
+                        <img src={activeDragPhoto.dataUrl} alt="" draggable={false} />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           </div>
 
           <div className="actions">
@@ -349,6 +384,19 @@ function App() {
           defaultBaseName={pdfNameDefault}
           onCancel={() => setShowPdfNameSheet(false)}
           onConfirm={(name) => void runPdfGeneration(name)}
+        />
+      )}
+
+      {renamePhoto && (
+        <RenamePhotoSheet
+          initialName={renamePhoto.fileName}
+          onCancel={() => setRenamePhotoId(null)}
+          onConfirm={(name) => {
+            setPhotos((prev) =>
+              prev.map((p) => (p.id === renamePhoto.id ? { ...p, fileName: name } : p)),
+            );
+            setRenamePhotoId(null);
+          }}
         />
       )}
 

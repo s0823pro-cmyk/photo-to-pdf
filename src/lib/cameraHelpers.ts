@@ -1,8 +1,8 @@
-/** Capacitor ImageOptions: Photo=ライブラリ, Picture=カメラ（英語名が紛らわしいため注意） */
+/** getPhoto / pickImages 用（プラットフォームの表示に反映） */
 export const CAMERA_PROMPT_LABELS = {
   promptLabelHeader: '写真を選択',
-  promptLabelPhoto: 'ライブラリから選択',
-  promptLabelPicture: 'カメラで撮影',
+  promptLabelPhoto: 'カメラで撮影',
+  promptLabelPicture: 'ライブラリから選択',
   promptLabelCancel: 'キャンセル',
 } as const;
 
