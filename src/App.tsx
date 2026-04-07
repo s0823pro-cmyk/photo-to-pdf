@@ -14,7 +14,7 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { isPro, isLoading, purchase, restore, resetPurchase } = usePurchase();
-  const { generatePdf, downloadPdf } = usePdf();
+  const { generatePdf, savePdf } = usePdf();
   const { showInterstitial } = useAdMob(isPro);
 
   useEffect(() => {
@@ -98,7 +98,7 @@ function App() {
       const blob = await generatePdf(photos);
       const now = new Date();
       const fileName = `写真PDF_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.pdf`;
-      downloadPdf(blob, fileName);
+      await savePdf(blob, fileName);
       setIsDone(true);
       await showInterstitial();
     } catch {
