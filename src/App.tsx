@@ -18,6 +18,7 @@ import {
   type PaperSizeId,
   type PdfQualityId,
   type GridColumns,
+  type SendMode,
   MAX_FREE_PHOTOS,
 } from './types';
 import { SettingsModal } from './components/SettingsModal';
@@ -82,6 +83,16 @@ function loadGridColumns(): GridColumns {
   return '2';
 }
 
+function loadSendMode(): SendMode {
+  try {
+    const v = localStorage.getItem('sendMode');
+    if (v === 'batch' || v === 'individual') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'batch';
+}
+
 function fileNameToPdfOutputName(fileName: string): string {
   const t = fileName.trim() || 'export';
   if (/\.pdf$/i.test(t)) return t;
@@ -103,7 +114,7 @@ function App() {
   const [showRenameSheet, setShowRenameSheet] = useState(false);
   const [renamePhotoId, setRenamePhotoId] = useState<string | null>(null);
   const [pdfMergeMode, setPdfMergeMode] = useState<'merge' | 'individual'>('merge');
-  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [overDropId, setOverDropId] = useState<string | null>(null);
   const libraryImageInputRef = useRef<HTMLInputElement>(null);
@@ -113,12 +124,13 @@ function App() {
   const isPickingRef = useRef(false);
   const libraryPickFocusHandlerRef = useRef<(() => void) | null>(null);
   const { isPro, isLoading, purchase, restore, resetPurchase } = usePurchase();
-  const { generatePdf, savePdf } = usePdf();
+  const { generatePdf, savePdf, savePdfBatch } = usePdf();
   const { showInterstitial } = useAdMob(isPro);
 
   const [paperSize, setPaperSize] = useState<PaperSizeId>('a4');
   const [pdfQuality, setPdfQuality] = useState<PdfQualityId>('high');
   const [gridColumns, setGridColumns] = useState<GridColumns>(() => loadGridColumns());
+  const [sendMode, setSendMode] = useState<SendMode>(() => loadSendMode());
 
   const setShowSettings = (open: boolean) => {
     setShowProModal(open);
@@ -176,6 +188,14 @@ function App() {
     }
   }, [gridColumns]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('sendMode', sendMode);
+    } catch {
+      /* ignore */
+    }
+  }, [sendMode]);
+
   const effectivePaperSize: PaperSizeId =
     !isPro && (paperSize === 'a3' || paperSize === 'b5') ? 'a4' : paperSize;
 
@@ -186,7 +206,21 @@ function App() {
     photosRef.current = photos;
   }, [photos]);
 
-  const previewPhoto = previewId ? photos.find((p) => p.id === previewId) : undefined;
+  useEffect(() => {
+    if (previewIndex === null) return;
+    if (photos.length === 0) {
+      setPreviewIndex(null);
+      return;
+    }
+    if (previewIndex >= photos.length) {
+      setPreviewIndex(photos.length - 1);
+    }
+  }, [photos.length, previewIndex]);
+
+  const previewPhoto =
+    previewIndex !== null && previewIndex >= 0 && previewIndex < photos.length
+      ? photos[previewIndex]
+      : null;
   const renamePhoto = showRenameSheet && renamePhotoId ? photos.find((p) => p.id === renamePhotoId) : undefined;
   const activeDragPhoto = activeDragId ? photos.find((p) => p.id === activeDragId) : undefined;
 
@@ -402,10 +436,16 @@ function App() {
   };
 
   const removePhoto = (id: string) => {
+    const removedIdx = photosRef.current.findIndex((p) => p.id === id);
+    setPreviewIndex((cur) => {
+      if (cur === null || removedIdx === -1) return cur;
+      if (cur === removedIdx) return null;
+      if (cur > removedIdx) return cur - 1;
+      return cur;
+    });
     setPhotos((prev) => prev.filter((p) => p.id !== id));
     setIsDone(false);
     setDoneWithNativeShare(false);
-    setPreviewId((cur) => (cur === id ? null : cur));
     if (renamePhotoId === id) {
       setShowRenameSheet(false);
       setRenamePhotoId(null);
@@ -468,11 +508,22 @@ function App() {
     try {
       const list = [...photos];
       let usedNativeShare = false;
-      for (let i = 0; i < list.length; i++) {
-        const blob = await generatePdf([list[i]], effectivePaperSize, effectivePdfQuality);
-        const u = await savePdf(blob, fileNameToPdfOutputName(list[i].fileName));
-        if (u) usedNativeShare = true;
+
+      if (sendMode === 'batch') {
+        const items: { blob: Blob; fileName: string }[] = [];
+        for (let i = 0; i < list.length; i++) {
+          const blob = await generatePdf([list[i]], effectivePaperSize, effectivePdfQuality);
+          items.push({ blob, fileName: fileNameToPdfOutputName(list[i].fileName) });
+        }
+        usedNativeShare = await savePdfBatch(items);
+      } else {
+        for (let i = 0; i < list.length; i++) {
+          const blob = await generatePdf([list[i]], effectivePaperSize, effectivePdfQuality);
+          const u = await savePdf(blob, fileNameToPdfOutputName(list[i].fileName));
+          if (u) usedNativeShare = true;
+        }
       }
+
       setDoneWithNativeShare(usedNativeShare);
       setIsDone(true);
       await showInterstitial();
@@ -487,7 +538,7 @@ function App() {
     setPhotos([]);
     setIsDone(false);
     setDoneWithNativeShare(false);
-    setPreviewId(null);
+    setPreviewIndex(null);
   };
 
   const isEmpty = photos.length === 0;
@@ -676,7 +727,7 @@ function App() {
                       isDropTarget={
                         Boolean(activeDragId && overDropId === photo.id && activeDragId !== photo.id)
                       }
-                      onPreview={() => setPreviewId(photo.id)}
+                      onPreview={() => setPreviewIndex(i)}
                       onRemove={() => removePhoto(photo.id)}
                       onRename={() => {
                         setShowPdfNameSheet(false);
@@ -759,9 +810,18 @@ function App() {
 
       {previewPhoto && (
         <PhotoPreviewModal
-          dataUrl={previewPhoto.dataUrl}
-          fileName={previewPhoto.fileName}
-          onClose={() => setPreviewId(null)}
+          photo={previewPhoto}
+          onClose={() => setPreviewIndex(null)}
+          onPrev={() =>
+            setPreviewIndex((i) => (i !== null && i > 0 ? i - 1 : i))
+          }
+          onNext={() =>
+            setPreviewIndex((i) =>
+              i !== null && i < photos.length - 1 ? i + 1 : i,
+            )
+          }
+          hasPrev={previewIndex !== null && previewIndex > 0}
+          hasNext={previewIndex !== null && previewIndex < photos.length - 1}
         />
       )}
 
@@ -778,6 +838,8 @@ function App() {
           onPdfQualityChange={setPdfQuality}
           gridColumns={gridColumns}
           onGridColumnsChange={setGridColumns}
+          sendMode={sendMode}
+          onSendModeChange={setSendMode}
         />
       )}
     </div>

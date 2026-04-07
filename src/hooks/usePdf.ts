@@ -20,7 +20,8 @@ function pageDimensionsPortraitMm(paperSize: PaperSizeId): { pageWidth: number; 
   return { pageWidth: s.width, pageHeight: s.height };
 }
 
-const correctImageOrientation = (dataUrl: string, quality: number): Promise<string> => {
+/** Canvas 経由で JPEG に再エンコード（画質調整用。EXIF 回転は行わない） */
+const reencodePhotoAsJpeg = (dataUrl: string, quality: number): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -46,6 +47,18 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function blobToBase64Data(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 export const usePdf = () => {
   const generatePdf = async (
     photos: Photo[],
@@ -57,8 +70,8 @@ export const usePdf = () => {
     const { pageWidth, pageHeight } = pageDimensionsPortraitMm(paperSize);
 
     for (let i = 0; i < photos.length; i++) {
-      const correctedDataUrl = await correctImageOrientation(photos[i].dataUrl, quality);
-      const img = await loadImage(correctedDataUrl);
+      const jpegDataUrl = await reencodePhotoAsJpeg(photos[i].dataUrl, quality);
+      const img = await loadImage(jpegDataUrl);
       const imgRatio = img.naturalWidth / img.naturalHeight;
 
       if (i === 0) {
@@ -83,11 +96,50 @@ export const usePdf = () => {
       const x = (pageWidth - w) / 2;
       const y = (pageHeight - h) / 2;
 
-      const format = correctedDataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-      pdf!.addImage(correctedDataUrl, format, x, y, w, h);
+      pdf!.addImage(jpegDataUrl, 'JPEG', x, y, w, h);
     }
 
     return pdf!.output('blob');
+  };
+
+  /**
+   * 複数PDFをキャッシュに書き込み、ネイティブでは Share.share({ files }) で一括共有。
+   * @returns ネイティブで共有シートまで完了したら true
+   */
+  const savePdfBatch = async (items: { blob: Blob; fileName: string }[]): Promise<boolean> => {
+    if (items.length === 0) return false;
+    if (Capacitor.isNativePlatform()) {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      const { Share } = await import('@capacitor/share');
+
+      const uris: string[] = [];
+      for (const { blob, fileName } of items) {
+        const base64 = await blobToBase64Data(blob);
+        const result = await Filesystem.writeFile({
+          path: fileName,
+          data: base64,
+          directory: Directory.Cache,
+        });
+        uris.push(result.uri);
+      }
+
+      await Share.share({
+        title: 'PDFを共有',
+        files: uris,
+        dialogTitle: '共有',
+      });
+      return true;
+    }
+
+    for (const { blob, fileName } of items) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    return false;
   };
 
   /** @returns ネイティブで共有シートまで完了したら true（Web のダウンロードは false） */
@@ -96,15 +148,7 @@ export const usePdf = () => {
       const { Filesystem, Directory } = await import('@capacitor/filesystem');
       const { Share } = await import('@capacitor/share');
 
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(',')[1]);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+      const base64 = await blobToBase64Data(blob);
 
       const result = await Filesystem.writeFile({
         path: fileName,
@@ -129,5 +173,5 @@ export const usePdf = () => {
     return false;
   };
 
-  return { generatePdf, savePdf };
+  return { generatePdf, savePdf, savePdfBatch };
 };

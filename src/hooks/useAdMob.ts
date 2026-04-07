@@ -23,7 +23,7 @@ export const useAdMob = (isPro: boolean) => {
       });
       interstitialReady.current = true;
     } catch (e) {
-      console.log('Interstitial load failed:', e);
+      console.warn('Interstitial load failed:', e);
     }
   }, []);
 
@@ -64,7 +64,7 @@ export const useAdMob = (isPro: boolean) => {
 
         await loadInterstitial();
       } catch (e) {
-        console.log('AdMob init failed:', e);
+        console.warn('AdMob init failed:', e);
       }
     })();
   }, [isPro, loadInterstitial]);
@@ -80,7 +80,7 @@ export const useAdMob = (isPro: boolean) => {
         await loadInterstitial();
       }
     } catch (e) {
-      console.log('Interstitial show failed:', e);
+      console.warn('Interstitial show failed:', e);
     }
   }, [isPro, loadInterstitial]);
 

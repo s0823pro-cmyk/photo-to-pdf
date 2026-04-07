@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import type { GridColumns, PaperSizeId, PdfQualityId } from '../types';
+import type { GridColumns, PaperSizeId, PdfQualityId, SendMode } from '../types';
 
 interface Props {
   onPurchase: () => void;
@@ -13,7 +13,19 @@ interface Props {
   onPdfQualityChange: (id: PdfQualityId) => void;
   gridColumns: GridColumns;
   onGridColumnsChange: (cols: GridColumns) => void;
+  sendMode: SendMode;
+  onSendModeChange: (mode: SendMode) => void;
 }
+
+const SEND_OPTIONS: { id: SendMode; label: string }[] = [
+  { id: 'batch', label: 'まとめて' },
+  { id: 'individual', label: '1件ずつ' },
+];
+
+const sendModeSummary: Record<SendMode, string> = {
+  batch: 'まとめて',
+  individual: '1件ずつ',
+};
 
 const GRID_OPTIONS: { id: GridColumns; label: string; proOnly: boolean }[] = [
   { id: '2', label: '2列', proOnly: false },
@@ -51,7 +63,7 @@ const qualityDisplay: Record<PdfQualityId, string> = {
   low: '低',
 };
 
-type OpenSection = 'display' | 'size' | 'quality' | 'purchase' | null;
+type OpenSection = 'display' | 'send' | 'size' | 'quality' | 'purchase' | null;
 
 export const SettingsModal = ({
   onPurchase,
@@ -65,11 +77,13 @@ export const SettingsModal = ({
   onPdfQualityChange,
   gridColumns,
   onGridColumnsChange,
+  sendMode,
+  onSendModeChange,
 }: Props) => {
   const [openSection, setOpenSection] = useState<OpenSection>(null);
   const scrollPurchaseAfterOpen = useRef(false);
 
-  const toggleSection = (section: 'display' | 'size' | 'quality' | 'purchase') => {
+  const toggleSection = (section: 'display' | 'send' | 'size' | 'quality' | 'purchase') => {
     setOpenSection((prev) => (prev === section ? null : section));
   };
 
@@ -147,6 +161,47 @@ export const SettingsModal = ({
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="settings-cell">
+              <button
+                type="button"
+                className="settings-cell-header"
+                aria-expanded={openSection === 'send'}
+                onClick={() => toggleSection('send')}
+              >
+                <span className="settings-cell-label">送信方式</span>
+                <span className="settings-cell-value">
+                  <span>{sendModeSummary[sendMode]}</span>
+                  <span aria-hidden>{openSection === 'send' ? '⌄' : '›'}</span>
+                </span>
+              </button>
+              {openSection === 'send' && (
+                <div className="settings-cell-body">
+                  <div className="settings-choice-row settings-choice-row--in-cell settings-send-cols">
+                    {SEND_OPTIONS.map((opt) => {
+                      const active = sendMode === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          className={`settings-row-btn settings-row-btn--compact${active ? ' settings-row-btn--active' : ''}`}
+                          onClick={() => onSendModeChange(opt.id)}
+                        >
+                          {active && <span className="settings-choice-check">✓ </span>}
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="settings-send-hints">
+                    <p className="settings-send-hint">
+                      まとめて：全データを一度の操作で送信・保存します
+                    </p>
+                    <p className="settings-send-hint">1件ずつ：データごとに送信先を選択できます</p>
                   </div>
                 </div>
               )}
