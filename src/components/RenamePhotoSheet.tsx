@@ -21,7 +21,7 @@ export function RenamePhotoSheet({ initialName, onConfirm, onCancel }: Props) {
   };
 
   return (
-    <div className="sheet-overlay sheet-overlay--alert" role="presentation" onClick={onCancel}>
+    <div className="sheet-overlay sheet-overlay--rename" role="presentation" onClick={onCancel}>
       <div
         className="rename-photo-sheet"
         role="dialog"

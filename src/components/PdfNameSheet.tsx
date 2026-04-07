@@ -21,7 +21,7 @@ export function PdfNameSheet({ defaultBaseName, onConfirm, onCancel }: Props) {
   };
 
   return (
-    <div className="sheet-overlay sheet-overlay--alert" role="presentation" onClick={onCancel}>
+    <div className="sheet-overlay sheet-overlay--pdf" role="presentation" onClick={onCancel}>
       <div
         className="pdf-name-sheet"
         role="dialog"

@@ -8,4 +8,4 @@ export interface AppState {
   isPro: boolean;
 }
 
-export const MAX_FREE_PHOTOS = 5;
+export const MAX_FREE_PHOTOS = 3;

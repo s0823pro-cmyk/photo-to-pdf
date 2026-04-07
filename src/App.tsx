@@ -11,7 +11,6 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
-import { Capacitor } from '@capacitor/core';
 import { type Photo, MAX_FREE_PHOTOS } from './types';
 import { SettingsModal } from './components/SettingsModal';
 import { PdfNameSheet } from './components/PdfNameSheet';
@@ -21,7 +20,7 @@ import { RenamePhotoSheet } from './components/RenamePhotoSheet';
 import { useAdMob } from './hooks/useAdMob';
 import { usePurchase } from './hooks/usePurchase';
 import { usePdf } from './hooks/usePdf';
-import { CAMERA_PROMPT_LABELS, webPathToDataUrl } from './lib/cameraHelpers';
+import { CAMERA_PROMPT_LABELS } from './lib/cameraHelpers';
 import { truncateFileName } from './lib/formatFilename';
 import './App.css';
 
@@ -34,6 +33,15 @@ function formatPdfBaseName(d = new Date()): string {
   return `写真PDF_${y}${mo}${day}_${h}${m}`;
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = () => reject(new Error('読み込み失敗'));
+    r.readAsDataURL(file);
+  });
+}
+
 function App() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -41,18 +49,26 @@ function App() {
   const [showProModal, setShowProModal] = useState(false);
   const [showPdfNameSheet, setShowPdfNameSheet] = useState(false);
   const [pdfNameDefault, setPdfNameDefault] = useState('');
-  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [pdfSheetNonce, setPdfSheetNonce] = useState(0);
+  const [showRenameSheet, setShowRenameSheet] = useState(false);
   const [renamePhotoId, setRenamePhotoId] = useState<string | null>(null);
+  const [pdfMergeMode, setPdfMergeMode] = useState<'merge' | 'individual'>('merge');
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [overDropId, setOverDropId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const photosRef = useRef(photos);
   const { isPro, isLoading, purchase, restore, resetPurchase } = usePurchase();
   const { generatePdf, savePdf } = usePdf();
   const { showInterstitial } = useAdMob(isPro);
 
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+
   const previewPhoto = previewId ? photos.find((p) => p.id === previewId) : undefined;
-  const renamePhoto = renamePhotoId ? photos.find((p) => p.id === renamePhotoId) : undefined;
+  const renamePhoto = showRenameSheet && renamePhotoId ? photos.find((p) => p.id === renamePhotoId) : undefined;
   const activeDragPhoto = activeDragId ? photos.find((p) => p.id === activeDragId) : undefined;
 
   const sensors = useSensors(
@@ -108,22 +124,46 @@ function App() {
 
   const canAddMore = isPro || photos.length < MAX_FREE_PHOTOS;
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    const remaining = isPro ? Infinity : MAX_FREE_PHOTOS - photos.length;
-    const toAdd = files.slice(0, remaining);
-    toAdd.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setPhotos((prev) => [...prev, {
-          id: crypto.randomUUID(),
-          dataUrl: ev.target?.result as string,
-          fileName: file.name,
-        }]);
-      };
-      reader.readAsDataURL(file);
-    });
-    e.target.value = '';
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const fileList = input.files ? Array.from(input.files) : [];
+    input.value = '';
+    if (!fileList.length) return;
+
+    let remaining = isPro ? Infinity : MAX_FREE_PHOTOS - photosRef.current.length;
+    const additions: Photo[] = [];
+
+    try {
+      for (const file of fileList) {
+        if (remaining <= 0) break;
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        if (isPdf) {
+          const { pdfFileToPhotos } = await import('./lib/pdfToPhotos');
+          const buf = await file.arrayBuffer();
+          const maxPages = remaining === Infinity ? 999 : remaining;
+          const pages = await pdfFileToPhotos(buf, file.name, maxPages);
+          additions.push(...pages);
+          remaining -= pages.length;
+        } else if (file.type.startsWith('image/')) {
+          const dataUrl = await readFileAsDataUrl(file);
+          additions.push({
+            id: crypto.randomUUID(),
+            dataUrl,
+            fileName: file.name,
+          });
+          remaining -= 1;
+        }
+      }
+      if (additions.length > 0) {
+        setPhotos((prev) => {
+          const cap = isPro ? Infinity : MAX_FREE_PHOTOS;
+          const room = cap - prev.length;
+          return [...prev, ...additions.slice(0, room)];
+        });
+      }
+    } catch {
+      alert('ファイルの取り込みに失敗しました。');
+    }
   };
 
   const handleCamera = async () => {
@@ -153,54 +193,33 @@ function App() {
     }
   };
 
-  const handleLibraryPick = async () => {
+  const handleLibraryPick = () => {
     if (!canAddMore) return;
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const { Camera } = await import('@capacitor/camera');
-        const remaining = isPro ? Infinity : MAX_FREE_PHOTOS - photos.length;
-        if (remaining <= 0) return;
-        const { photos: picked } = await Camera.pickImages({
-          quality: 90,
-          limit: isPro ? 0 : remaining,
-          correctOrientation: true,
-          ...CAMERA_PROMPT_LABELS,
-        } as import('@capacitor/camera').GalleryImageOptions);
-        const newItems: Photo[] = [];
-        let i = 0;
-        for (const p of picked) {
-          const dataUrl = await webPathToDataUrl(p.webPath);
-          newItems.push({
-            id: crypto.randomUUID(),
-            dataUrl,
-            fileName: `写真_${Date.now()}_${i++}.jpg`,
-          });
-        }
-        setPhotos((prev) => {
-          if (!isPro) {
-            const space = MAX_FREE_PHOTOS - prev.length;
-            return [...prev, ...newItems.slice(0, space)];
-          }
-          return [...prev, ...newItems];
-        });
-      } catch {
-        fileInputRef.current?.click();
-      }
-    } else {
-      fileInputRef.current?.click();
-    }
+    fileInputRef.current?.click();
   };
 
   const removePhoto = (id: string) => {
     setPhotos((prev) => prev.filter((p) => p.id !== id));
     setIsDone(false);
     setPreviewId((cur) => (cur === id ? null : cur));
+    if (renamePhotoId === id) {
+      setShowRenameSheet(false);
+      setRenamePhotoId(null);
+    }
   };
 
   const openPdfNameSheet = () => {
     if (photos.length === 0) return;
+    setShowRenameSheet(false);
+    setRenamePhotoId(null);
     setPdfNameDefault(formatPdfBaseName());
+    setPdfSheetNonce((n) => n + 1);
     setShowPdfNameSheet(true);
+  };
+
+  const closeRenameSheet = () => {
+    setShowRenameSheet(false);
+    setRenamePhotoId(null);
   };
 
   const runPdfGeneration = async (baseName: string) => {
@@ -209,10 +228,19 @@ function App() {
     setIsGenerating(true);
     setIsDone(false);
     try {
-      const blob = await generatePdf(photos);
       const safe = baseName.replace(/\.pdf$/i, '').trim();
-      const fileName = `${safe.length > 0 ? safe : formatPdfBaseName()}.pdf`;
-      await savePdf(blob, fileName);
+      const stem = safe.length > 0 ? safe : formatPdfBaseName();
+      const list = [...photos];
+      if (pdfMergeMode === 'individual') {
+        for (let i = 0; i < list.length; i++) {
+          const blob = await generatePdf([list[i]]);
+          const nameStem = list[i].fileName.replace(/\.[^/.]+$/, '') || `ページ${i + 1}`;
+          await savePdf(blob, `${nameStem}.pdf`);
+        }
+      } else {
+        const blob = await generatePdf(list);
+        await savePdf(blob, `${stem}.pdf`);
+      }
       setIsDone(true);
       await showInterstitial();
     } catch {
@@ -232,40 +260,45 @@ function App() {
 
   return (
     <div className="app">
-      <header className="header">
-        <div className="header-left">
-          <h1>写真→PDF</h1>
-          {isPro && <span className="pro-badge">PRO</span>}
-        </div>
-        <div className="header-actions">
-          {isPro && (
+      <div className="sticky-header-cluster">
+        <header className="header">
+          <div className="header-left">
+            <h1>写真→PDF</h1>
+            {isPro && <span className="pro-badge">PRO</span>}
+          </div>
+          <div className="header-actions">
+            {!isEmpty && (
+              <button type="button" className="reset-btn reset-btn--header" onClick={handleReset}>
+                リセット
+              </button>
+            )}
+            {isPro && (
+              <button
+                type="button"
+                className="restore-link"
+                disabled={isLoading}
+                onClick={() => {
+                  if (confirm('購入状態をリセットしますか？（無料プランに戻ります）')) {
+                    resetPurchase();
+                  }
+                }}
+              >
+                購入をリセット
+              </button>
+            )}
             <button
               type="button"
-              className="restore-link"
+              className="settings-btn"
               disabled={isLoading}
-              onClick={() => {
-                if (confirm('購入状態をリセットしますか？（無料プランに戻ります）')) {
-                  resetPurchase();
-                }
-              }}
+              onClick={() => setShowProModal(true)}
+              aria-label="設定"
+              title="設定"
             >
-              購入をリセット
+              ⚙️
             </button>
-          )}
-          <button
-            type="button"
-            className="settings-btn"
-            disabled={isLoading}
-            onClick={() => setShowProModal(true)}
-            aria-label="設定"
-            title="設定"
-          >
-            ⚙️
-          </button>
-        </div>
-      </header>
+          </div>
+        </header>
 
-      {!isEmpty && (
         <div className="quick-add-bar">
           <button
             type="button"
@@ -280,122 +313,142 @@ function App() {
             type="button"
             className="quick-add-btn"
             disabled={!canAddMore || isLoading}
-            onClick={() => void handleLibraryPick()}
+            onClick={handleLibraryPick}
           >
             <span className="quick-add-btn-icon" aria-hidden>🗂️</span>
             ライブラリ
           </button>
         </div>
-      )}
 
-      {!isPro && !isEmpty && (
-        <div className="limit-bar">
-          <div className="limit-info">
-            <span className="limit-label">使用枚数</span>
-            <div className="limit-dots">
-              {Array.from({ length: MAX_FREE_PHOTOS }, (_, i) => (
-                <div key={i} className={`dot ${i < photos.length ? 'filled' : ''}`} />
-              ))}
-            </div>
-          </div>
-          <button type="button" className="pro-btn" disabled={isLoading} onClick={() => setShowProModal(true)}>無制限 ¥500</button>
-        </div>
-      )}
-
-      {isEmpty ? (
-        <div className="empty-state">
-          <div className="empty-icon">🖼️</div>
-          <p className="empty-title">写真をPDFに変換</p>
-          <p className="empty-sub">複数の写真をまとめて<br />1つのPDFファイルに</p>
-          <div className="empty-actions">
-            <button type="button" className="empty-btn" onClick={handleCamera}>
-              <span className="empty-btn-icon">📷</span>
-              撮影する
-            </button>
-            <button type="button" className="empty-btn" onClick={() => void handleLibraryPick()}>
-              <span className="empty-btn-icon">🗂️</span>
-              ライブラリ
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="photo-grid">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-              onDragCancel={handleDragCancel}
-            >
-              <SortableContext items={photoIds} strategy={rectSortingStrategy}>
-                {photos.map((photo, i) => (
-                  <SortablePhotoCard
-                    key={photo.id}
-                    photo={photo}
-                    index={i}
-                    isDropTarget={
-                      Boolean(activeDragId && overDropId === photo.id && activeDragId !== photo.id)
-                    }
-                    onPreview={() => setPreviewId(photo.id)}
-                    onRemove={() => removePhoto(photo.id)}
-                    onRename={() => setRenamePhotoId(photo.id)}
-                  />
+        {!isPro && (
+          <div className="limit-bar">
+            <div className="limit-info">
+              <span className="limit-label">使用枚数</span>
+              <div className="limit-dots">
+                {Array.from({ length: MAX_FREE_PHOTOS }, (_, i) => (
+                  <div key={i} className={`dot ${i < photos.length ? 'filled' : ''}`} />
                 ))}
-              </SortableContext>
-              <DragOverlay adjustScale={false}>
-                {activeDragPhoto ? (
-                  <div className="photo-card photo-card--overlay-clone">
-                    <span className="photo-num-badge" aria-hidden>
-                      {photos.findIndex((p) => p.id === activeDragPhoto.id) + 1}
-                    </span>
-                    <div className="photo-thumb-wrap">
-                      <div className="photo-filename-overlay photo-filename-overlay--static">
-                        {truncateFileName(activeDragPhoto.fileName, 15)}
-                      </div>
-                      <div className="photo-thumb-btn photo-thumb-btn--static">
-                        <img src={activeDragPhoto.dataUrl} alt="" draggable={false} />
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </DragOverlay>
-            </DndContext>
-          </div>
-
-          <div className="actions">
-            <button type="button" className="generate-btn" onClick={openPdfNameSheet} disabled={isGenerating}>
-              {isGenerating ? 'PDF生成中...' : `PDFを作成 ${photos.length}枚 →`}
+              </div>
+            </div>
+            <button type="button" className="pro-btn" disabled={isLoading} onClick={() => setShowProModal(true)}>
+              無制限 ¥500
             </button>
-            <div className="sub-actions">
-              <button type="button" className="reset-btn" onClick={handleReset}>リセット</button>
+          </div>
+        )}
+
+        {!isEmpty && (
+          <div className="pdf-toolbar">
+            <div className="actions-main">
+              <div className="pdf-mode-toggle" role="group" aria-label="PDFの作成方法">
+                <button
+                  type="button"
+                  className={`pdf-mode-toggle__btn${pdfMergeMode === 'individual' ? ' pdf-mode-toggle__btn--active' : ''}`}
+                  onClick={() => setPdfMergeMode('individual')}
+                >
+                  個別
+                </button>
+                <button
+                  type="button"
+                  className={`pdf-mode-toggle__btn${pdfMergeMode === 'merge' ? ' pdf-mode-toggle__btn--active' : ''}`}
+                  onClick={() => setPdfMergeMode('merge')}
+                >
+                  まとめ
+                </button>
+              </div>
+              <button type="button" className="generate-btn" onClick={openPdfNameSheet} disabled={isGenerating}>
+                {isGenerating ? 'PDF生成中...' : `PDFを作成 ${photos.length}枚 →`}
+              </button>
             </div>
             {isDone && <p className="done-msg">✅ PDFを保存しました！</p>}
           </div>
-        </>
-      )}
+        )}
+      </div>
 
-      <input ref={fileInputRef} type="file" accept="image/*" multiple className="file-input-hidden" onChange={handleFileChange} />
+      <div className="photo-grid-scroll">
+        <div className="photo-grid-wrap">
+          {isEmpty ? (
+            <p className="photo-grid-hint">撮影またはライブラリから、写真・PDFを追加してください</p>
+          ) : (
+            <div className="photo-grid">
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragEnd={handleDragEnd}
+                onDragCancel={handleDragCancel}
+              >
+                <SortableContext items={photoIds} strategy={rectSortingStrategy}>
+                  {photos.map((photo, i) => (
+                    <SortablePhotoCard
+                      key={photo.id}
+                      photo={photo}
+                      index={i}
+                      isDropTarget={
+                        Boolean(activeDragId && overDropId === photo.id && activeDragId !== photo.id)
+                      }
+                      onPreview={() => setPreviewId(photo.id)}
+                      onRemove={() => removePhoto(photo.id)}
+                      onRename={() => {
+                        setShowPdfNameSheet(false);
+                        setRenamePhotoId(photo.id);
+                        setShowRenameSheet(true);
+                      }}
+                    />
+                  ))}
+                </SortableContext>
+                <DragOverlay adjustScale={false}>
+                  {activeDragPhoto ? (
+                    <div className="photo-card photo-card--overlay-clone">
+                      <span className="photo-num-badge" aria-hidden>
+                        {photos.findIndex((p) => p.id === activeDragPhoto.id) + 1}
+                      </span>
+                      <div className="photo-thumb-wrap">
+                        <div className="photo-filename-overlay photo-filename-overlay--static">
+                          {truncateFileName(activeDragPhoto.fileName, 15)}
+                        </div>
+                        <div className="photo-thumb-btn photo-thumb-btn--static">
+                          <img src={activeDragPhoto.dataUrl} alt="" draggable={false} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,.pdf"
+        multiple
+        className="file-input-hidden"
+        onChange={(e) => void handleFileChange(e)}
+      />
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFileChange} />
 
       {showPdfNameSheet && (
         <PdfNameSheet
+          key={pdfSheetNonce}
           defaultBaseName={pdfNameDefault}
           onCancel={() => setShowPdfNameSheet(false)}
           onConfirm={(name) => void runPdfGeneration(name)}
         />
       )}
 
-      {renamePhoto && (
+      {showRenameSheet && renamePhoto && (
         <RenamePhotoSheet
+          key={renamePhoto.id}
           initialName={renamePhoto.fileName}
-          onCancel={() => setRenamePhotoId(null)}
+          onCancel={closeRenameSheet}
           onConfirm={(name) => {
             setPhotos((prev) =>
               prev.map((p) => (p.id === renamePhoto.id ? { ...p, fileName: name } : p)),
             );
-            setRenamePhotoId(null);
+            closeRenameSheet();
           }}
         />
       )}

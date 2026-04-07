@@ -15,7 +15,12 @@ export const SettingsModal = ({ onPurchase, onRestore, onClose, isLoading }: Pro
       onClick={(e) => e.stopPropagation()}
     >
       <div className="modal-icon" aria-hidden>🔓</div>
-      <h2 id="settings-modal-title" className="modal-title">無制限プラン</h2>
+      <div className="modal-title-row">
+        <h2 id="settings-modal-title" className="modal-title">
+          無制限プラン
+        </h2>
+        <span className="limited-badge">期間限定</span>
+      </div>
       <p className="modal-desc">広告なし・枚数制限なしで<br />快適にPDF変換できます</p>
 
       <div className="modal-features">
@@ -33,8 +38,10 @@ export const SettingsModal = ({ onPurchase, onRestore, onClose, isLoading }: Pro
         </div>
       </div>
 
+      <p className="original-price">通常価格 ¥750</p>
+
       <button type="button" className="modal-buy-btn" onClick={onPurchase} disabled={isLoading}>
-        {isLoading ? '処理中...' : '¥500 で購入'}
+        {isLoading ? '処理中...' : '¥500 で購入（期間限定）'}
       </button>
 
       <div className="modal-legal-disclosure">
