@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { useState } from 'react';
 
-const PRODUCT_ID = 'remove_ads_unlimited';
+const PRODUCT_ID = 'com.s0823pro.phototopdf.pro';
 
 function readIsProFromStorage(): boolean {
   try {
